@@ -23,6 +23,8 @@ class WPEM_Exporter {
             $this->log_debug( 'ZipArchive extension is missing.' );
             $this->fail( esc_html__( 'The ZipArchive PHP extension is required to build the export archive.', 'export-posts-to-markdown' ) );
         }
+        // TODO: Allow filtering which posts to export (by author/date/status) before building the archive.
+        // TODO: Consider integrating export snapshots with a GitHub repository for version tracking.
 
         $posts = get_posts(
             array(
