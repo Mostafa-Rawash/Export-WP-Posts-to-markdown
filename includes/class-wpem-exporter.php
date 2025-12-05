@@ -142,8 +142,6 @@ class WPEM_Exporter {
 
         $md_lines[] = '---';
         $md_lines[] = '';
-        $md_lines[] = '# ' . $title;
-        $md_lines[] = '';
         $md_lines[] = $content;
 
         return implode( "\n", $md_lines ) . "\n";
