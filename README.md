@@ -73,7 +73,9 @@ Front matter is YAML between `---` lines at the top of the `.md` file.
 - Place images in `_images/` inside your ZIP. Use them in Markdown like:
   ```
   ![Alt text](/_images/example.jpg "Caption")
+  ![Alt text](_images/example.jpg "Caption")
   ```
+- Both `_images/...` and `/_images/...` paths are accepted for inline images and `featured_image`.
 - Images are uploaded to the Media Library once and reused on subsequent imports. `_wpexportmd_source_path` meta tracks the source path.
 
 ## Example
