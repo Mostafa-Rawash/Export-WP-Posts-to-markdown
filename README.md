@@ -26,6 +26,19 @@ WordPress admin tool that lets you **export all published posts to Markdown in a
    - A ZIP containing `.md` files and an optional `_images/` directory for local images/featured images.
 3) Submit to import. Posts with matching IDs are updated; otherwise new posts are created.
 
+### What happens during import (add/edit flow)
+1) Capability + nonce checks run.
+2) ZIP? Media map is built from `_images/` entries and images are uploaded or reused (tracked via `_wpexportmd_source_path`).
+3) Each `.md` file is parsed for front matter and content.
+4) If `skip_file: yes`, the file is skipped.
+5) Post lookup:
+   - If `id` is in the filename or front matter and that post exists, it is **updated**.
+   - Otherwise a new post is **created**; any provided `id` is saved in `_wpexportmd_original_id` for reference.
+6) Applied fields: `title`, `post_status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `post_excerpt`, `custom_fields`, `taxonomy`, `categories`, `tags`.
+7) Content: Markdown is converted to HTML; images are rewritten to the uploaded/reused URLs. Markdown image titles become captions via `<figure><figcaption>`.
+8) Featured image: if `featured_image` points to `_images/...`, it’s set from the uploaded/reused attachment.
+9) Debug log: results and any issues are stored in a transient and appended to `wp-content/uploads/wpexportmd.log`.
+
 ## Markdown Front Matter Reference
 Front matter is YAML between `---` lines at the top of the `.md` file.
 

@@ -117,6 +117,7 @@ class WPEM_Exporter {
         $md_lines[] = 'status: "' . $this->markdown->escape_yaml( $status ) . '"';
         $md_lines[] = 'slug: "' . $this->markdown->escape_yaml( $slug ) . '"';
         $md_lines[] = 'permalink: ' . $permalink;
+        $md_lines[] = 'id: ' . absint( $post->ID );
 
         if ( $author ) {
             $md_lines[] = 'author: "' . $this->markdown->escape_yaml( $author ) . '"';

@@ -292,12 +292,25 @@ class WPEM_Markdown {
         $text = preg_replace( '/\*(.+?)\*/s', '<em>$1</em>', $text );
 
         $text = preg_replace_callback(
-            '/!\[([^\]]*)\]\(([^)]+)\)/',
+            '/!\[([^\]]*)\]\(\s*("?)([^" \t\)]+)\2(?:\s+"([^"]*)")?\s*\)/',
             function ( $matches ) use ( $media_map ) {
-                $alt = esc_attr( $matches[1] );
-                $src = $this->resolve_media_src( $matches[2], $media_map );
+                $alt     = esc_attr( $matches[1] );
+                $raw_src = isset( $matches[3] ) ? $matches[3] : '';
+                $raw_src = trim( $raw_src, "\"'" );
+                $src     = $this->resolve_media_src( $raw_src, $media_map );
+                $title   = isset( $matches[4] ) ? trim( $matches[4] ) : '';
 
-                return '<img src="' . esc_url( $src ) . '" alt="' . $alt . '" />';
+                $img = '<img src="' . esc_url( $src ) . '" alt="' . $alt . '"';
+                if ( '' !== $title ) {
+                    $img .= ' title="' . esc_attr( $title ) . '"';
+                }
+                $img .= ' />';
+
+                if ( '' !== $title ) {
+                    return '<figure class="wpem-image">' . $img . '<figcaption class="wpem-caption">' . esc_html( $title ) . '</figcaption></figure>';
+                }
+
+                return $img;
             },
             $text
         );

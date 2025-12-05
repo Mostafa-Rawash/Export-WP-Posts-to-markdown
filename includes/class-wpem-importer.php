@@ -44,12 +44,22 @@ class WPEM_Importer {
             }
 
             $media_map = $this->media->prepare_zip_media_map( $zip );
+            $folders   = array();
+            $indexed   = array();
 
             for ( $i = 0; $i < $zip->numFiles; $i++ ) {
                 $entry_name = $zip->getNameIndex( $i );
 
                 if ( ! $entry_name || 'md' !== strtolower( pathinfo( $entry_name, PATHINFO_EXTENSION ) ) ) {
                     continue;
+                }
+
+                $dir_name = trim( str_replace( '\\', '/', dirname( $entry_name ) ), '/' );
+                if ( '' !== $dir_name && '.' !== $dir_name ) {
+                    $folders[ $dir_name ] = true;
+                }
+                if ( preg_match( '#/index\\.md$#i', $entry_name ) ) {
+                    $indexed[ $dir_name ] = true;
                 }
 
                 $markdown = $zip->getFromIndex( $i );
@@ -64,6 +74,8 @@ class WPEM_Importer {
                 $stats['processed']++;
                 $stats[ $result ]++;
             }
+
+            $this->maybe_create_folder_posts( $folders, $indexed );
 
             $zip->close();
         } elseif ( 'md' === $extension ) {
@@ -83,6 +95,48 @@ class WPEM_Importer {
         }
 
         return $stats;
+    }
+
+    private function maybe_create_folder_posts( $folders, $indexed ) {
+        if ( empty( $folders ) ) {
+            return;
+        }
+
+        foreach ( $folders as $folder => $true ) {
+            if ( isset( $indexed[ $folder ] ) ) {
+                continue; // index.md already handled.
+            }
+
+            $slug  = sanitize_title( basename( $folder ) );
+            $title = ucwords( str_replace( array( '-', '_' ), ' ', basename( $folder ) ) );
+
+            if ( '' === $slug ) {
+                continue;
+            }
+
+            $existing = get_page_by_path( $slug, OBJECT, 'post' );
+
+            if ( $existing ) {
+                $this->log_debug( 'Folder post exists for ' . $folder . ' (slug ' . $slug . '). Skipping creation.' );
+                continue;
+            }
+
+            $postarr = array(
+                'post_title'   => $title,
+                'post_status'  => 'draft',
+                'post_content' => '',
+                'post_name'    => $slug,
+                'post_type'    => 'post',
+            );
+
+            $inserted_id = wp_insert_post( $postarr, true );
+
+            if ( is_wp_error( $inserted_id ) ) {
+                $this->log_debug( 'Failed to create folder post for ' . $folder . ': ' . $inserted_id->get_error_message() );
+            } else {
+                $this->log_debug( 'Created folder post for ' . $folder . ' as ID ' . $inserted_id . '.' );
+            }
+        }
     }
 
     private function import_markdown_post( $markdown, $filename, $media_map ) {

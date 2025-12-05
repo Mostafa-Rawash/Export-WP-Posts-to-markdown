@@ -119,7 +119,12 @@ class WPEM_Media {
         if ( $attachment && ! empty( $attachment['id'] ) ) {
             set_post_thumbnail( $post_id, (int) $attachment['id'] );
         } else {
-            $this->log_debug( 'Could not resolve featured_image for ' . $source );
+            $map_hint = '';
+            if ( ! empty( $media_map ) ) {
+                $keys     = array_keys( $media_map );
+                $map_hint = ' (media_map keys: ' . implode( ', ', array_slice( $keys, 0, 5 ) ) . ')';
+            }
+            $this->log_debug( 'Could not resolve featured_image for ' . $source . '; normalized=' . $normalized . $map_hint );
         }
     }
 
