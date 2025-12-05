@@ -294,6 +294,24 @@ class WPEM_Markdown {
         return '[' . implode( ', ', $escaped ) . ']';
     }
 
+    public function format_yaml_block_list( array $items, $indent = 2 ) {
+        $items = array_filter( array_map( 'wp_strip_all_tags', $items ) );
+        $items = array_unique( array_map( 'trim', $items ) );
+
+        if ( empty( $items ) ) {
+            return array();
+        }
+
+        $lines  = array();
+        $prefix = str_repeat( ' ', (int) $indent );
+
+        foreach ( $items as $item ) {
+            $lines[] = $prefix . '- "' . $this->escape_yaml( $item ) . '"';
+        }
+
+        return $lines;
+    }
+
     private function apply_inline_markdown( $text, $media_map = array() ) {
         $text = preg_replace_callback(
             '/`([^`]+)`/',

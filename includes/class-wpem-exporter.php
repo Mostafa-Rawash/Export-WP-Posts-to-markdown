@@ -124,11 +124,13 @@ class WPEM_Exporter {
         }
 
         if ( ! empty( $category_names ) ) {
-            $md_lines[] = 'categories: ' . $this->markdown->format_yaml_list( $category_names );
+            $md_lines[] = 'categories:';
+            $md_lines   = array_merge( $md_lines, $this->markdown->format_yaml_block_list( $category_names ) );
         }
 
         if ( ! empty( $tag_names ) ) {
-            $md_lines[] = 'tags: ' . $this->markdown->format_yaml_list( $tag_names );
+            $md_lines[] = 'tags:';
+            $md_lines   = array_merge( $md_lines, $this->markdown->format_yaml_block_list( $tag_names ) );
         }
 
         if ( $excerpt ) {
