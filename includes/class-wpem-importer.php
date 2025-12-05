@@ -1,0 +1,363 @@
+<?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+class WPEM_Importer {
+
+    private $markdown;
+    private $media;
+    private $log;
+    private $fail;
+
+    public function __construct( $markdown, $media, $logger, $failer ) {
+        $this->markdown = $markdown;
+        $this->media    = $media;
+        $this->log      = $logger;
+        $this->fail     = $failer;
+    }
+
+    public function import_file( $tmp_path, $name ) {
+        $extension = strtolower( pathinfo( $name, PATHINFO_EXTENSION ) );
+
+        $this->log_debug( 'Uploaded file detected: ' . $name . ' (.' . $extension . ').' );
+
+        $stats = array(
+            'processed' => 0,
+            'updated'   => 0,
+            'created'   => 0,
+            'skipped'   => 0,
+        );
+
+        if ( 'zip' === $extension ) {
+            if ( ! class_exists( 'ZipArchive' ) ) {
+                $this->log_debug( 'ZipArchive extension is missing for import.' );
+                $this->fail( esc_html__( 'The ZipArchive PHP extension is required to import from ZIP.', 'export-posts-to-markdown' ) );
+            }
+
+            $zip = new ZipArchive();
+
+            if ( true !== $zip->open( $tmp_path ) ) {
+                $this->log_debug( 'ZipArchive::open failed for uploaded file.' );
+                $this->fail( esc_html__( 'Could not open the uploaded ZIP file.', 'export-posts-to-markdown' ) );
+            }
+
+            $media_map = $this->media->prepare_zip_media_map( $zip );
+
+            for ( $i = 0; $i < $zip->numFiles; $i++ ) {
+                $entry_name = $zip->getNameIndex( $i );
+
+                if ( ! $entry_name || 'md' !== strtolower( pathinfo( $entry_name, PATHINFO_EXTENSION ) ) ) {
+                    continue;
+                }
+
+                $markdown = $zip->getFromIndex( $i );
+
+                if ( false === $markdown ) {
+                    $this->log_debug( 'Failed to read ' . $entry_name . ' from ZIP.' );
+                    $stats['skipped']++;
+                    continue;
+                }
+
+                $result = $this->import_markdown_post( $markdown, $entry_name, $media_map );
+                $stats['processed']++;
+                $stats[ $result ]++;
+            }
+
+            $zip->close();
+        } elseif ( 'md' === $extension ) {
+            $markdown = file_get_contents( $tmp_path );
+
+            if ( false === $markdown ) {
+                $this->log_debug( 'Failed to read uploaded Markdown file.' );
+                $this->fail( esc_html__( 'Could not read the uploaded Markdown file.', 'export-posts-to-markdown' ) );
+            }
+
+            $result              = $this->import_markdown_post( $markdown, $name, array() );
+            $stats['processed']  = 1;
+            $stats[ $result ]   += 1;
+        } else {
+            $this->log_debug( 'Unsupported file extension: ' . $extension );
+            $this->fail( esc_html__( 'Only ZIP archives or .md files are supported for import.', 'export-posts-to-markdown' ) );
+        }
+
+        return $stats;
+    }
+
+    private function import_markdown_post( $markdown, $filename, $media_map ) {
+        $parsed  = $this->markdown->parse_front_matter( $markdown );
+        $meta    = $parsed['meta'];
+        $content = $parsed['content'];
+
+        if ( ! empty( $meta['skip_file'] ) && 'yes' === strtolower( (string) $meta['skip_file'] ) ) {
+            $this->log_debug( 'Skipping import for ' . $filename . ' due to skip_file flag.' );
+            return 'skipped';
+        }
+
+        $original_id = $this->extract_post_id_from_filename( $filename, $meta );
+        $post_id     = $original_id ? absint( $original_id ) : 0;
+
+        $title  = ! empty( $meta['title'] ) ? wp_strip_all_tags( $meta['title'] ) : __( 'Imported Markdown', 'export-posts-to-markdown' );
+        $status = ! empty( $meta['post_status'] ) ? sanitize_key( $meta['post_status'] ) : ( ! empty( $meta['status'] ) ? sanitize_key( $meta['status'] ) : 'draft' );
+        $slug   = ! empty( $meta['slug'] ) ? sanitize_title( $meta['slug'] ) : '';
+        $date   = ! empty( $meta['post_date'] ) ? $meta['post_date'] : ( ! empty( $meta['date'] ) ? $meta['date'] : '' );
+
+        $author_id = $this->resolve_author_from_meta( isset( $meta['author'] ) ? $meta['author'] : '' );
+        $excerpt   = isset( $meta['post_excerpt'] ) ? wp_strip_all_tags( $meta['post_excerpt'] ) : ( isset( $meta['excerpt'] ) ? wp_strip_all_tags( $meta['excerpt'] ) : '' );
+
+        $html_content = $this->markdown->markdown_to_html( $content, $media_map );
+        $html_content = wp_kses_post( $html_content );
+
+        $postarr = array(
+            'post_title'   => $title,
+            'post_status'  => $status,
+            'post_content' => $html_content,
+            'post_type'    => 'post',
+        );
+
+        if ( ! empty( $meta['menu_order'] ) ) {
+            $postarr['menu_order'] = (int) $meta['menu_order'];
+        }
+
+        if ( $excerpt ) {
+            $postarr['post_excerpt'] = $excerpt;
+        }
+
+        if ( $slug ) {
+            $postarr['post_name'] = $slug;
+        }
+
+        if ( $date && false !== strtotime( $date ) ) {
+            $postarr['post_date']     = get_date_from_gmt( gmdate( 'Y-m-d H:i:s', strtotime( $date ) ) );
+            $postarr['post_date_gmt'] = gmdate( 'Y-m-d H:i:s', strtotime( $date ) );
+        }
+
+        if ( $author_id ) {
+            $postarr['post_author'] = $author_id;
+        }
+
+        if ( ! empty( $meta['comment_status'] ) && in_array( $meta['comment_status'], array( 'open', 'closed' ), true ) ) {
+            $postarr['comment_status'] = $meta['comment_status'];
+        }
+
+        $result_status = 'skipped';
+
+        if ( $post_id && get_post( $post_id ) ) {
+            $postarr['ID'] = $post_id;
+            $updated_id    = wp_update_post( $postarr, true );
+
+            if ( ! is_wp_error( $updated_id ) ) {
+                $this->log_debug( 'Updated post ID ' . $post_id . ' from ' . $filename . '.' );
+                $result_status = 'updated';
+                $this->assign_terms_from_meta( $post_id, $meta );
+                $this->apply_custom_fields( $post_id, $meta );
+                $this->media->set_featured_image( $post_id, isset( $meta['featured_image'] ) ? $meta['featured_image'] : '', $media_map );
+                $this->maybe_apply_page_template( $post_id, $meta );
+                $this->maybe_apply_sticky( $post_id, $meta );
+            } else {
+                $this->log_debug( 'Failed to update post ID ' . $post_id . ': ' . $updated_id->get_error_message() );
+            }
+        } else {
+            $inserted_id = wp_insert_post( $postarr, true );
+
+            if ( ! is_wp_error( $inserted_id ) ) {
+                $this->log_debug( 'Created new post ID ' . $inserted_id . ' from ' . $filename . '.' );
+                $result_status = 'created';
+                if ( $original_id && ! get_post_meta( $inserted_id, '_wpexportmd_original_id', true ) ) {
+                    $this->log_debug( 'Original ID ' . $original_id . ' stored in post meta because matching post was not found.' );
+                    update_post_meta( $inserted_id, '_wpexportmd_original_id', $original_id );
+                }
+                $this->assign_terms_from_meta( $inserted_id, $meta );
+                $this->apply_custom_fields( $inserted_id, $meta );
+                $this->media->set_featured_image( $inserted_id, isset( $meta['featured_image'] ) ? $meta['featured_image'] : '', $media_map );
+                $this->maybe_apply_page_template( $inserted_id, $meta );
+                $this->maybe_apply_sticky( $inserted_id, $meta );
+            } else {
+                $this->log_debug( 'Failed to create post from ' . $filename . ': ' . $inserted_id->get_error_message() );
+            }
+        }
+
+        return $result_status;
+    }
+
+    private function assign_terms_from_meta( $post_id, $meta ) {
+        if ( ! empty( $meta['categories'] ) && is_array( $meta['categories'] ) ) {
+            $category_ids = array();
+
+            foreach ( $meta['categories'] as $category_name ) {
+                $category_name = wp_strip_all_tags( $category_name );
+
+                if ( '' === $category_name ) {
+                    continue;
+                }
+
+                $term = term_exists( $category_name, 'category' );
+
+                if ( ! $term ) {
+                    $term = wp_insert_term( $category_name, 'category' );
+                }
+
+                if ( ! is_wp_error( $term ) && ! empty( $term['term_id'] ) ) {
+                    $category_ids[] = (int) $term['term_id'];
+                }
+            }
+
+            if ( ! empty( $category_ids ) ) {
+                wp_set_post_terms( $post_id, $category_ids, 'category', false );
+            }
+        }
+
+        if ( ! empty( $meta['tags'] ) && is_array( $meta['tags'] ) ) {
+            $tags = array();
+
+            foreach ( $meta['tags'] as $tag_name ) {
+                $tag_name = wp_strip_all_tags( $tag_name );
+
+                if ( '' === $tag_name ) {
+                    continue;
+                }
+
+                $tags[] = $tag_name;
+            }
+
+            if ( ! empty( $tags ) ) {
+                wp_set_post_terms( $post_id, $tags, 'post_tag', false );
+            }
+        }
+
+        if ( ! empty( $meta['taxonomy'] ) && is_array( $meta['taxonomy'] ) ) {
+            foreach ( $meta['taxonomy'] as $assignment ) {
+                $assignment = wp_strip_all_tags( $assignment );
+
+                if ( '' === $assignment || false === strpos( $assignment, ':' ) ) {
+                    continue;
+                }
+
+                list( $tax, $term_value ) = array_map( 'trim', explode( ':', $assignment, 2 ) );
+
+                if ( '' === $tax || '' === $term_value ) {
+                    continue;
+                }
+
+                $term = term_exists( $term_value, $tax );
+
+                if ( ! $term ) {
+                    $term = wp_insert_term( $term_value, $tax );
+                }
+
+                if ( is_wp_error( $term ) ) {
+                    $this->log_debug( 'Taxonomy assignment failed for ' . $tax . ': ' . $term->get_error_message() );
+                    continue;
+                }
+
+                if ( ! empty( $term['term_id'] ) ) {
+                    wp_set_post_terms( $post_id, array( (int) $term['term_id'] ), $tax, true );
+                }
+            }
+        }
+    }
+
+    private function apply_custom_fields( $post_id, $meta ) {
+        if ( empty( $meta['custom_fields'] ) || ! is_array( $meta['custom_fields'] ) ) {
+            return;
+        }
+
+        foreach ( $meta['custom_fields'] as $field_entry ) {
+            if ( false === strpos( $field_entry, ':' ) ) {
+                continue;
+            }
+
+            list( $key, $value ) = array_map( 'trim', explode( ':', $field_entry, 2 ) );
+
+            if ( '' === $key ) {
+                continue;
+            }
+
+            update_post_meta( $post_id, $key, $value );
+        }
+    }
+
+    private function maybe_apply_page_template( $post_id, $meta ) {
+        if ( empty( $meta['page_template'] ) ) {
+            return;
+        }
+
+        update_post_meta( $post_id, '_wp_page_template', sanitize_text_field( $meta['page_template'] ) );
+    }
+
+    private function maybe_apply_sticky( $post_id, $meta ) {
+        if ( empty( $meta['stick_post'] ) ) {
+            return;
+        }
+
+        $value = strtolower( (string) $meta['stick_post'] );
+
+        if ( 'yes' === $value ) {
+            stick_post( $post_id );
+        } elseif ( 'no' === $value ) {
+            unstick_post( $post_id );
+        }
+    }
+
+    private function extract_post_id_from_filename( $filename, $meta ) {
+        $name = pathinfo( $filename, PATHINFO_FILENAME );
+
+        if ( preg_match( '/(\d+)/', $name, $matches ) ) {
+            return absint( $matches[1] );
+        }
+
+        if ( ! empty( $meta['id'] ) && is_numeric( $meta['id'] ) ) {
+            return absint( $meta['id'] );
+        }
+
+        return 0;
+    }
+
+    private function resolve_author_from_meta( $author_value ) {
+        $author_value = wp_strip_all_tags( (string) $author_value );
+
+        if ( '' === $author_value ) {
+            return get_current_user_id();
+        }
+
+        $user = get_user_by( 'login', $author_value );
+
+        if ( $user ) {
+            return (int) $user->ID;
+        }
+
+        $user = get_user_by( 'slug', sanitize_title( $author_value ) );
+
+        if ( $user ) {
+            return (int) $user->ID;
+        }
+
+        $found = get_users(
+            array(
+                'search'         => $author_value,
+                'search_columns' => array( 'display_name' ),
+                'number'         => 1,
+                'fields'         => 'ID',
+            )
+        );
+
+        if ( ! empty( $found ) ) {
+            return (int) $found[0];
+        }
+
+        return get_current_user_id();
+    }
+
+    private function log_debug( $message ) {
+        if ( is_callable( $this->log ) ) {
+            call_user_func( $this->log, $message );
+        }
+    }
+
+    private function fail( $message ) {
+        if ( is_callable( $this->fail ) ) {
+            call_user_func( $this->fail, $message );
+        }
+    }
+}
