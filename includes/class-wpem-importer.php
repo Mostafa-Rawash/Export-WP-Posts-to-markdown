@@ -141,7 +141,7 @@ class WPEM_Importer {
 
     private function import_markdown_post( $markdown, $filename, $media_map ) {
         $parsed  = $this->markdown->parse_front_matter( $markdown );
-        $meta    = $parsed['meta'];
+        $meta    = $this->validate_front_matter_design( $parsed['meta'], $filename );
         $content = $parsed['content'];
 
         if ( ! empty( $meta['skip_file'] ) && 'yes' === strtolower( (string) $meta['skip_file'] ) ) {
@@ -355,12 +355,6 @@ class WPEM_Importer {
     }
 
     private function extract_post_id_from_filename( $filename, $meta ) {
-        $name = pathinfo( $filename, PATHINFO_FILENAME );
-
-        if ( preg_match( '/(\d+)/', $name, $matches ) ) {
-            return absint( $matches[1] );
-        }
-
         if ( ! empty( $meta['id'] ) && is_numeric( $meta['id'] ) ) {
             return absint( $meta['id'] );
         }
@@ -413,5 +407,161 @@ class WPEM_Importer {
         if ( is_callable( $this->fail ) ) {
             call_user_func( $this->fail, $message );
         }
+    }
+
+    private function validate_front_matter_design( $meta, $filename ) {
+        $meta                = is_array( $meta ) ? $meta : array();
+        $validated           = array();
+        $allowed_statuses    = array( 'publish', 'draft', 'pending', 'future' );
+        $allowed_comment     = array( 'open', 'closed' );
+        $allowed_sticky_flag = array( 'yes', 'no' );
+
+        if ( isset( $meta['status'] ) && ! isset( $meta['post_status'] ) ) {
+            $meta['post_status'] = $meta['status'];
+        }
+
+        if ( isset( $meta['date'] ) && ! isset( $meta['post_date'] ) ) {
+            $meta['post_date'] = $meta['date'];
+        }
+
+        if ( ! empty( $meta['title'] ) ) {
+            $validated['title'] = wp_strip_all_tags( $meta['title'] );
+        }
+
+        if ( ! empty( $meta['slug'] ) ) {
+            $validated['slug'] = sanitize_title( $meta['slug'] );
+        }
+
+        if ( ! empty( $meta['post_status'] ) ) {
+            $status = sanitize_key( $meta['post_status'] );
+            if ( in_array( $status, $allowed_statuses, true ) ) {
+                $validated['post_status'] = $status;
+            } else {
+                $this->log_debug( 'Invalid post_status in front matter for ' . $filename . ': ' . $meta['post_status'] );
+            }
+        }
+
+        if ( ! empty( $meta['post_date'] ) ) {
+            $date = $meta['post_date'];
+            if ( false !== strtotime( $date ) ) {
+                $validated['post_date'] = $date;
+            } else {
+                $this->log_debug( 'Invalid post_date in front matter for ' . $filename . ': ' . $date );
+            }
+        }
+
+        if ( isset( $meta['menu_order'] ) ) {
+            $validated['menu_order'] = (int) $meta['menu_order'];
+        }
+
+        if ( ! empty( $meta['author'] ) ) {
+            $validated['author'] = wp_strip_all_tags( $meta['author'] );
+        }
+
+        if ( ! empty( $meta['post_excerpt'] ) ) {
+            $validated['post_excerpt'] = wp_strip_all_tags( $meta['post_excerpt'] );
+        } elseif ( ! empty( $meta['excerpt'] ) ) {
+            $validated['post_excerpt'] = wp_strip_all_tags( $meta['excerpt'] );
+        }
+
+        if ( ! empty( $meta['comment_status'] ) ) {
+            $comment_status = sanitize_key( $meta['comment_status'] );
+            if ( in_array( $comment_status, $allowed_comment, true ) ) {
+                $validated['comment_status'] = $comment_status;
+            } else {
+                $this->log_debug( 'Invalid comment_status in front matter for ' . $filename . ': ' . $meta['comment_status'] );
+            }
+        }
+
+        if ( ! empty( $meta['page_template'] ) ) {
+            $validated['page_template'] = sanitize_text_field( $meta['page_template'] );
+        }
+
+        if ( ! empty( $meta['stick_post'] ) ) {
+            $stick = strtolower( (string) $meta['stick_post'] );
+            if ( in_array( $stick, $allowed_sticky_flag, true ) ) {
+                $validated['stick_post'] = $stick;
+            } else {
+                $this->log_debug( 'Invalid stick_post in front matter for ' . $filename . ': ' . $meta['stick_post'] );
+            }
+        }
+
+        foreach ( array( 'categories', 'tags' ) as $list_key ) {
+            if ( isset( $meta[ $list_key ] ) ) {
+                $values = is_array( $meta[ $list_key ] ) ? $meta[ $list_key ] : array( $meta[ $list_key ] );
+                $clean  = array();
+
+                foreach ( $values as $value ) {
+                    $value = wp_strip_all_tags( (string) $value );
+                    if ( '' !== $value ) {
+                        $clean[] = $value;
+                    }
+                }
+
+                if ( ! empty( $clean ) ) {
+                    $validated[ $list_key ] = array_values( array_unique( $clean ) );
+                }
+            }
+        }
+
+        if ( isset( $meta['taxonomy'] ) ) {
+            $tax_assignments = is_array( $meta['taxonomy'] ) ? $meta['taxonomy'] : array( $meta['taxonomy'] );
+            $clean           = array();
+
+            foreach ( $tax_assignments as $assignment ) {
+                $assignment = wp_strip_all_tags( (string) $assignment );
+                if ( '' === $assignment ) {
+                    continue;
+                }
+
+                if ( false === strpos( $assignment, ':' ) ) {
+                    $this->log_debug( 'Invalid taxonomy format in front matter for ' . $filename . ': ' . $assignment );
+                    continue;
+                }
+
+                $clean[] = $assignment;
+            }
+
+            if ( ! empty( $clean ) ) {
+                $validated['taxonomy'] = $clean;
+            }
+        }
+
+        if ( isset( $meta['custom_fields'] ) ) {
+            $fields = is_array( $meta['custom_fields'] ) ? $meta['custom_fields'] : array( $meta['custom_fields'] );
+            $clean  = array();
+
+            foreach ( $fields as $field_entry ) {
+                $field_entry = trim( (string) $field_entry );
+                if ( '' === $field_entry ) {
+                    continue;
+                }
+
+                if ( false === strpos( $field_entry, ':' ) ) {
+                    $this->log_debug( 'Invalid custom_fields format in front matter for ' . $filename . ': ' . $field_entry );
+                    continue;
+                }
+
+                $clean[] = $field_entry;
+            }
+
+            if ( ! empty( $clean ) ) {
+                $validated['custom_fields'] = $clean;
+            }
+        }
+
+        if ( ! empty( $meta['featured_image'] ) ) {
+            $validated['featured_image'] = trim( (string) $meta['featured_image'] );
+        }
+
+        if ( isset( $meta['skip_file'] ) ) {
+            $validated['skip_file'] = $meta['skip_file'];
+        }
+
+        if ( ! empty( $meta['id'] ) && is_numeric( $meta['id'] ) ) {
+            $validated['id'] = absint( $meta['id'] );
+        }
+
+        return $validated;
     }
 }

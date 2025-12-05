@@ -209,9 +209,21 @@ class WPEM_Markdown {
             $front_matter = trim( $matches[1] );
             $content      = substr( $markdown, strlen( $matches[0] ) );
             $lines        = preg_split( "/\r\n|\r|\n/", $front_matter );
+            $current_key  = '';
 
             foreach ( $lines as $line ) {
+                if ( preg_match( '/^\s*-\s*(.+)$/', $line, $list_matches ) ) {
+                    if ( '' !== $current_key ) {
+                        if ( ! isset( $meta[ $current_key ] ) || ! is_array( $meta[ $current_key ] ) ) {
+                            $meta[ $current_key ] = array();
+                        }
+                        $meta[ $current_key ][] = trim( $list_matches[1], " \t\n\r\0\x0B\"" );
+                    }
+                    continue;
+                }
+
                 if ( false === strpos( $line, ':' ) ) {
+                    $current_key = '';
                     continue;
                 }
 
@@ -220,6 +232,7 @@ class WPEM_Markdown {
                 $value               = trim( $value, " \t\n\r\0\x0B\"" );
 
                 if ( '' === $key ) {
+                    $current_key = '';
                     continue;
                 }
 
@@ -235,10 +248,12 @@ class WPEM_Markdown {
                     }
 
                     $meta[ $key ] = $clean_list;
+                    $current_key  = $key;
                     continue;
                 }
 
                 $meta[ $key ] = $value;
+                $current_key  = ( '' === $value ) ? $key : '';
             }
         }
 

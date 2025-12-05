@@ -3,10 +3,11 @@
 WordPress admin tool that lets you **export all published posts to Markdown in a ZIP** and **import Markdown back into WordPress**. Imports support front‑matter fields for titles, status, dates, taxonomies, custom fields, sticky posts, page templates, and local images packaged in a `_images/` folder.
 
 ## Features
-- Export all published posts (`post` type) to Markdown files in a ZIP, with YAML front matter and body converted from HTML.
+- Export all published posts (`post` type) to Markdown files in a ZIP, with YAML front matter (including `id`) and body converted from HTML.
 - Import Markdown from a single `.md` or a ZIP containing multiple `.md` files.
 - Update posts by ID found in the filename/front matter or create new ones; preserves original ID in meta when creating.
-- Front matter support: `title`, `post_status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `taxonomy` (tax: term), `categories`, `tags`, `custom_fields`, `post_excerpt`, `featured_image`, `skip_file`.
+- Front matter support: `title`, `post_status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `taxonomy` (tax: term), `categories`, `tags`, `custom_fields`, `post_excerpt`, `featured_image`, `skip_file`, `id`.
+- Arrays in front matter can be provided as inline lists (`[ "foo", "bar" ]`) or YAML block lists (`tags:\n  - foo\n  - bar`).
 - Media handling: include an `_images/` directory in ZIPs; images are uploaded once, reused, and can be set as featured images; Markdown image URLs are rewritten to uploaded URLs.
 - Debug logs are shown as admin notices on the Tools page after runs.
 
@@ -55,9 +56,18 @@ Front matter is YAML between `---` lines at the top of the `.md` file.
 - `tags`: Array of tag names.
 - `custom_fields`: Array of `key: value` pairs (e.g. `["foo: bar"]`).
 - `post_excerpt`: Excerpt text.
-- `featured_image`: Path under `_images/` in the ZIP (e.g. `_images/post-image-1.jpg`). Remote URLs are not supported.
+- `featured_image`: Path under `_images/` in the ZIP (e.g. `_images/post-image-1.jpg` or `/_images/post-image-1.jpg`). Remote URLs are not supported.
 - `skip_file`: `yes` to skip importing this file.
 - `id` (optional): Used to update an existing post; if not found, the ID is stored in meta `_wpexportmd_original_id` on create.
+- Arrays can be written inline (`["foo", "bar"]`) or as block lists:
+  ```
+  tags:
+    - tag11
+    - tag22
+  categories:
+    - Examples
+    - Guides
+  ```
 
 ## Images
 - Place images in `_images/` inside your ZIP. Use them in Markdown like:
