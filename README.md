@@ -1,0 +1,62 @@
+# Export Posts to Markdown
+
+WordPress admin tool that lets you **export all published posts to Markdown in a ZIP** and **import Markdown back into WordPress**. Imports support front‑matter fields for titles, status, dates, taxonomies, custom fields, sticky posts, page templates, and local images packaged in a `_images/` folder.
+
+## Features
+- Export all published posts (`post` type) to Markdown files in a ZIP, with YAML front matter and body converted from HTML.
+- Import Markdown from a single `.md` or a ZIP containing multiple `.md` files.
+- Update posts by ID found in the filename/front matter or create new ones; preserves original ID in meta when creating.
+- Front matter support: `title`, `post_status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `taxonomy` (tax: term), `categories`, `tags`, `custom_fields`, `post_excerpt`, `featured_image`, `skip_file`.
+- Media handling: include an `_images/` directory in ZIPs; images are uploaded once, reused, and can be set as featured images; Markdown image URLs are rewritten to uploaded URLs.
+- Debug logs are shown as admin notices on the Tools page after runs.
+
+## Installation
+1) Copy the plugin folder into `wp-content/plugins/export-posts-to-markdown/`.
+2) Activate it from **Plugins > Installed Plugins**.
+
+## Usage
+### Export
+1) Go to **Tools > Export to Markdown**.
+2) Click **Download Markdown ZIP**. You will get `wordpress-markdown-export-YYYYMMDD-HHMMSS.zip`.
+
+### Import
+1) Go to **Tools > Export to Markdown**.
+2) Upload either:
+   - A single `.md` file, or
+   - A ZIP containing `.md` files and an optional `_images/` directory for local images/featured images.
+3) Submit to import. Posts with matching IDs are updated; otherwise new posts are created.
+
+## Markdown Front Matter Reference
+Front matter is YAML between `---` lines at the top of the `.md` file.
+
+- `title`: Post title.
+- `post_status`: `publish` | `draft` | `pending` | `future`.
+- `post_date`: Datetime, e.g. `2024-12-01 20:14:59`.
+- `slug`: Post slug.
+- `menu_order`: Integer.
+- `comment_status`: `open` | `closed`.
+- `page_template`: Template file name (for pages/templates in your theme).
+- `stick_post`: `yes` to stick, `no` to unstick.
+- `taxonomy`: Array of `taxonomy: term` pairs (e.g. `["genre: Fiction"]`).
+- `categories`: Array of category names.
+- `tags`: Array of tag names.
+- `custom_fields`: Array of `key: value` pairs (e.g. `["foo: bar"]`).
+- `post_excerpt`: Excerpt text.
+- `featured_image`: Path under `_images/` in the ZIP (e.g. `_images/post-image-1.jpg`). Remote URLs are not supported.
+- `skip_file`: `yes` to skip importing this file.
+- `id` (optional): Used to update an existing post; if not found, the ID is stored in meta `_wpexportmd_original_id` on create.
+
+## Images
+- Place images in `_images/` inside your ZIP. Use them in Markdown like:
+  ```
+  ![Alt text](/_images/example.jpg "Caption")
+  ```
+- Images are uploaded to the Media Library once and reused on subsequent imports. `_wpexportmd_source_path` meta tracks the source path.
+
+## Example
+See `example-import.md` in this plugin for a full example of supported front matter and Markdown.
+
+## Notes & Limits
+- Only `post` post type is exported/imported by default.
+- Remote URLs for `featured_image` are ignored; use `_images/`.
+- Markdown/HTML conversion is intentionally basic; complex HTML may need manual adjustments.
