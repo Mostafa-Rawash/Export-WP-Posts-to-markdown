@@ -53,10 +53,69 @@ class WP_Export_Posts_To_Markdown {
         ?>
         <div class="wrap">
             <h1>Export Posts to Markdown</h1>
-            <p><?php esc_html_e( 'Click the button below to download all published posts as Markdown files in a single ZIP archive.', 'export-posts-to-markdown' ); ?></p>
+            <p><?php esc_html_e( 'Choose filters (optional) then download posts as Markdown files in a single ZIP archive.', 'export-posts-to-markdown' ); ?></p>
             <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
                 <?php wp_nonce_field( 'wpexportmd', 'wpexportmd_nonce' ); ?>
                 <input type="hidden" name="action" value="wpexportmd" />
+                <table class="form-table" role="presentation">
+                    <tbody>
+                        <tr>
+                            <th scope="row"><label for="wpexportmd_status"><?php esc_html_e( 'Status', 'export-posts-to-markdown' ); ?></label></th>
+                            <td>
+                                <select name="wpexportmd_status" id="wpexportmd_status">
+                                    <option value=""><?php esc_html_e( 'All', 'export-posts-to-markdown' ); ?></option>
+                                    <option value="publish"><?php esc_html_e( 'Published', 'export-posts-to-markdown' ); ?></option>
+                                    <option value="draft"><?php esc_html_e( 'Draft', 'export-posts-to-markdown' ); ?></option>
+                                    <option value="pending"><?php esc_html_e( 'Pending', 'export-posts-to-markdown' ); ?></option>
+                                    <option value="future"><?php esc_html_e( 'Scheduled', 'export-posts-to-markdown' ); ?></option>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="wpexportmd_author"><?php esc_html_e( 'Author', 'export-posts-to-markdown' ); ?></label></th>
+                            <td>
+                                <select name="wpexportmd_author" id="wpexportmd_author">
+                                    <option value=""><?php esc_html_e( 'All authors', 'export-posts-to-markdown' ); ?></option>
+                                    <?php
+                                    $authors = get_users(
+                                        array(
+                                            'who'    => 'authors',
+                                            'fields' => array( 'ID', 'display_name' ),
+                                        )
+                                    );
+                                    foreach ( $authors as $author ) :
+                                        ?>
+                                        <option value="<?php echo esc_attr( $author->ID ); ?>"><?php echo esc_html( $author->display_name ); ?></option>
+                                        <?php
+                                    endforeach;
+                                    ?>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php esc_html_e( 'Date range', 'export-posts-to-markdown' ); ?></th>
+                            <td>
+                                <label>
+                                    <?php esc_html_e( 'From', 'export-posts-to-markdown' ); ?>
+                                    <input type="date" name="wpexportmd_start_date" />
+                                </label>
+                                <label style="margin-left:10px;">
+                                    <?php esc_html_e( 'To', 'export-posts-to-markdown' ); ?>
+                                    <input type="date" name="wpexportmd_end_date" />
+                                </label>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="wpexportmd_exclude_exported"><?php esc_html_e( 'Exclude previously exported', 'export-posts-to-markdown' ); ?></label></th>
+                            <td>
+                                <label>
+                                    <input type="checkbox" name="wpexportmd_exclude_exported" id="wpexportmd_exclude_exported" value="1" checked />
+                                    <?php esc_html_e( 'Skip posts already marked as exported', 'export-posts-to-markdown' ); ?>
+                                </label>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
                 <?php submit_button( __( 'Download Markdown ZIP', 'export-posts-to-markdown' ) ); ?>
             </form>
             <hr />
@@ -90,7 +149,27 @@ class WP_Export_Posts_To_Markdown {
             $this->fail_and_die( esc_html__( 'Security check failed.', 'export-posts-to-markdown' ) );
         }
 
-        $this->exporter->export_all();
+        $filters = array();
+
+        if ( ! empty( $_POST['wpexportmd_status'] ) ) {
+            $filters['status'] = sanitize_key( wp_unslash( $_POST['wpexportmd_status'] ) );
+        }
+
+        if ( ! empty( $_POST['wpexportmd_author'] ) ) {
+            $filters['author'] = absint( $_POST['wpexportmd_author'] );
+        }
+
+        if ( ! empty( $_POST['wpexportmd_start_date'] ) && false !== strtotime( $_POST['wpexportmd_start_date'] ) ) {
+            $filters['start_date'] = sanitize_text_field( wp_unslash( $_POST['wpexportmd_start_date'] ) );
+        }
+
+        if ( ! empty( $_POST['wpexportmd_end_date'] ) && false !== strtotime( $_POST['wpexportmd_end_date'] ) ) {
+            $filters['end_date'] = sanitize_text_field( wp_unslash( $_POST['wpexportmd_end_date'] ) );
+        }
+
+        $filters['exclude_exported'] = ! empty( $_POST['wpexportmd_exclude_exported'] );
+
+        $this->exporter->export_all( $filters );
         $this->persist_debug_log();
 
         exit;

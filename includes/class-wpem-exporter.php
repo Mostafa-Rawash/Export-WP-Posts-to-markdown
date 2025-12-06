@@ -18,23 +18,72 @@ class WPEM_Exporter {
         $this->stream   = $streamer;
     }
 
-    public function export_all() {
+    public function export_all( $filters = array() ) {
         if ( ! class_exists( 'ZipArchive' ) ) {
             $this->log_debug( 'ZipArchive extension is missing.' );
             $this->fail( esc_html__( 'The ZipArchive PHP extension is required to build the export archive.', 'export-posts-to-markdown' ) );
         }
-        // TODO: Allow filtering which posts to export (by author/date/status) before building the archive.
-        // TODO: Consider integrating export snapshots with a GitHub repository for version tracking.
 
-        $posts = get_posts(
-            array(
-                'posts_per_page' => -1,
-                'post_type'      => 'post',
-                'post_status'    => 'publish',
-                'orderby'        => 'date',
-                'order'          => 'DESC',
+        $query_args = array(
+            'posts_per_page' => -1,
+            'post_type'      => 'post',
+            'post_status'    => 'publish',
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+        );
+
+        if ( ! empty( $filters['status'] ) ) {
+            $query_args['post_status'] = sanitize_key( $filters['status'] );
+        }
+
+        if ( ! empty( $filters['author'] ) ) {
+            $query_args['author'] = (int) $filters['author'];
+        }
+
+        if ( ! empty( $filters['start_date'] ) || ! empty( $filters['end_date'] ) ) {
+            $date_query = array();
+
+            if ( ! empty( $filters['start_date'] ) ) {
+                $date_query['after'] = $filters['start_date'];
+            }
+
+            if ( ! empty( $filters['end_date'] ) ) {
+                $date_query['before'] = $filters['end_date'];
+            }
+
+            if ( ! empty( $date_query ) ) {
+                $date_query['inclusive'] = true;
+                $query_args['date_query'] = array( $date_query );
+            }
+        }
+
+        if ( ! empty( $filters['exclude_exported'] ) ) {
+            $query_args['meta_query'] = array(
+                'relation' => 'OR',
+                array(
+                    'key'     => '_wpexportmd_exported',
+                    'compare' => 'NOT EXISTS',
+                ),
+                array(
+                    'key'     => '_wpexportmd_exported',
+                    'value'   => 'yes',
+                    'compare' => '!=',
+                ),
+            );
+        }
+
+        $this->log_debug(
+            sprintf(
+                'Export query args: status=%s, author=%s, start=%s, end=%s, exclude_exported=%s.',
+                isset( $query_args['post_status'] ) ? ( is_array( $query_args['post_status'] ) ? implode( ',', $query_args['post_status'] ) : $query_args['post_status'] ) : 'any',
+                isset( $query_args['author'] ) ? (int) $query_args['author'] : 'any',
+                ! empty( $filters['start_date'] ) ? $filters['start_date'] : 'none',
+                ! empty( $filters['end_date'] ) ? $filters['end_date'] : 'none',
+                ! empty( $filters['exclude_exported'] ) ? 'yes' : 'no'
             )
         );
+
+        $posts = get_posts( $query_args );
 
         if ( empty( $posts ) ) {
             $this->log_debug( 'No published posts returned by query.' );
@@ -69,6 +118,8 @@ class WPEM_Exporter {
             $filename = $this->generate_post_filename( $post, $used_filenames );
             $zip->addFromString( $filename, $markdown );
             $added_count++;
+            update_post_meta( $post->ID, '_wpexportmd_exported', 'yes' );
+            update_post_meta( $post->ID, '_wpexportmd_last_exported', gmdate( 'Y-m-d H:i:s' ) );
         }
 
         $zip->close();
