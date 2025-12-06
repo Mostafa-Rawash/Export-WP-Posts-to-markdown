@@ -10,12 +10,14 @@ class WPEM_Exporter {
     private $log;
     private $fail;
     private $stream;
+    private $sync;
 
-    public function __construct( $markdown, $logger, $failer, $streamer ) {
+    public function __construct( $markdown, $logger, $failer, $streamer, $sync = null ) {
         $this->markdown = $markdown;
         $this->log      = $logger;
         $this->fail     = $failer;
         $this->stream   = $streamer;
+        $this->sync     = $sync;
     }
 
     public function export_all( $filters = array() ) {
@@ -133,6 +135,10 @@ class WPEM_Exporter {
         }
 
         $download_name = 'wordpress-markdown-export-' . gmdate( 'Ymd-His' ) . '.zip';
+
+        if ( $this->sync ) {
+            $this->sync->push_exports( $tmp_file, $download_name, $filters );
+        }
 
         $this->log_debug( 'Preparing download: ' . $download_name . '.' );
 

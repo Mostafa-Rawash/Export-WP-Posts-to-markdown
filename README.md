@@ -10,6 +10,7 @@ WordPress admin tool that lets you **export all published posts to Markdown in a
 - Arrays in front matter can be provided as inline lists (`[ "foo", "bar" ]`) or YAML block lists (`tags:\n  - foo\n  - bar`).
 - Media handling: include an `_images/` directory in ZIPs; images are uploaded once, reused, and can be set as featured images; Markdown image URLs are rewritten to uploaded URLs.
 - Debug logs are shown as admin notices on the Tools page after runs.
+- Optional GitHub/Google Drive sync: enable either integration from the Tools page and provide repo/path/branch/token (GitHub) or access token/folder (Drive) to push the ZIP on export and backup imported files.
 
 ## Installation
 1) Copy the plugin folder into `wp-content/plugins/export-posts-to-markdown/`.

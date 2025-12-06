@@ -6,6 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once __DIR__ . '/class-wpem-markdown.php';
 require_once __DIR__ . '/class-wpem-media.php';
+require_once __DIR__ . '/class-wpem-sync.php';
 require_once __DIR__ . '/class-wpem-exporter.php';
 require_once __DIR__ . '/class-wpem-importer.php';
 
@@ -16,26 +17,33 @@ class WP_Export_Posts_To_Markdown {
 
     private $exporter;
     private $importer;
+    private $sync;
 
     public function __construct() {
         $markdown       = new WPEM_Markdown();
         $media          = new WPEM_Media( array( $this, 'log_debug' ) );
+        $options        = get_option( 'wpexportmd_settings', array() );
+        $options        = is_array( $options ) ? $options : array();
+        $this->sync     = new WPEM_Sync( array( $this, 'log_debug' ), $options );
         $this->exporter = new WPEM_Exporter(
             $markdown,
             array( $this, 'log_debug' ),
             array( $this, 'fail_and_die' ),
-            array( $this, 'stream_file_to_browser' )
+            array( $this, 'stream_file_to_browser' ),
+            $this->sync
         );
         $this->importer = new WPEM_Importer(
             $markdown,
             $media,
             array( $this, 'log_debug' ),
-            array( $this, 'fail_and_die' )
+            array( $this, 'fail_and_die' ),
+            $this->sync
         );
 
         add_action( 'admin_menu', array( $this, 'add_page' ) );
         add_action( 'admin_post_wpexportmd', array( $this, 'handle_export' ) );
         add_action( 'admin_post_wpexportmd_import', array( $this, 'handle_import' ) );
+        add_action( 'admin_post_wpexportmd_save_settings', array( $this, 'handle_save_settings' ) );
         add_action( 'admin_notices', array( $this, 'render_debug_notices' ) );
     }
 
@@ -50,6 +58,8 @@ class WP_Export_Posts_To_Markdown {
     }
 
     public function render_page() {
+        $options = get_option( 'wpexportmd_settings', array() );
+        $options = is_array( $options ) ? $options : array();
         ?>
         <div class="wrap">
             <h1>Export Posts to Markdown</h1>
@@ -117,6 +127,49 @@ class WP_Export_Posts_To_Markdown {
                     </tbody>
                 </table>
                 <?php submit_button( __( 'Download Markdown ZIP', 'export-posts-to-markdown' ) ); ?>
+            </form>
+            <hr />
+            <h2><?php esc_html_e( 'Integrations (GitHub / Drive)', 'export-posts-to-markdown' ); ?></h2>
+            <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+                <?php wp_nonce_field( 'wpexportmd_save_settings', 'wpexportmd_save_settings_nonce' ); ?>
+                <input type="hidden" name="action" value="wpexportmd_save_settings" />
+                <table class="form-table" role="presentation">
+                    <tbody>
+                        <tr>
+                            <th scope="row"><label for="wpexportmd_github_enabled"><?php esc_html_e( 'Enable GitHub export', 'export-posts-to-markdown' ); ?></label></th>
+                            <td><input type="checkbox" name="wpexportmd_github_enabled" id="wpexportmd_github_enabled" value="1" <?php checked( ! empty( $options['github_enabled'] ) ); ?> /></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="wpexportmd_github_repo"><?php esc_html_e( 'GitHub repo (owner/repo)', 'export-posts-to-markdown' ); ?></label></th>
+                            <td><input type="text" name="wpexportmd_github_repo" id="wpexportmd_github_repo" value="<?php echo esc_attr( isset( $options['github_repo'] ) ? $options['github_repo'] : '' ); ?>" class="regular-text" /></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="wpexportmd_github_branch"><?php esc_html_e( 'GitHub branch', 'export-posts-to-markdown' ); ?></label></th>
+                            <td><input type="text" name="wpexportmd_github_branch" id="wpexportmd_github_branch" value="<?php echo esc_attr( isset( $options['github_branch'] ) ? $options['github_branch'] : 'main' ); ?>" class="regular-text" /></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="wpexportmd_github_path"><?php esc_html_e( 'GitHub path prefix', 'export-posts-to-markdown' ); ?></label></th>
+                            <td><input type="text" name="wpexportmd_github_path" id="wpexportmd_github_path" value="<?php echo esc_attr( isset( $options['github_path'] ) ? $options['github_path'] : 'exports' ); ?>" class="regular-text" /></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="wpexportmd_github_token"><?php esc_html_e( 'GitHub token', 'export-posts-to-markdown' ); ?></label></th>
+                            <td><input type="password" name="wpexportmd_github_token" id="wpexportmd_github_token" value="<?php echo esc_attr( isset( $options['github_token'] ) ? $options['github_token'] : '' ); ?>" class="regular-text" autocomplete="off" /></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="wpexportmd_drive_enabled"><?php esc_html_e( 'Enable Drive export', 'export-posts-to-markdown' ); ?></label></th>
+                            <td><input type="checkbox" name="wpexportmd_drive_enabled" id="wpexportmd_drive_enabled" value="1" <?php checked( ! empty( $options['drive_enabled'] ) ); ?> /></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="wpexportmd_drive_token"><?php esc_html_e( 'Google Drive access token', 'export-posts-to-markdown' ); ?></label></th>
+                            <td><input type="password" name="wpexportmd_drive_token" id="wpexportmd_drive_token" value="<?php echo esc_attr( isset( $options['drive_token'] ) ? $options['drive_token'] : '' ); ?>" class="regular-text" autocomplete="off" /></td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="wpexportmd_drive_folder_id"><?php esc_html_e( 'Drive folder ID (optional)', 'export-posts-to-markdown' ); ?></label></th>
+                            <td><input type="text" name="wpexportmd_drive_folder_id" id="wpexportmd_drive_folder_id" value="<?php echo esc_attr( isset( $options['drive_folder_id'] ) ? $options['drive_folder_id'] : '' ); ?>" class="regular-text" /></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <?php submit_button( __( 'Save Integration Settings', 'export-posts-to-markdown' ) ); ?>
             </form>
             <hr />
             <h2><?php esc_html_e( 'Import posts from Markdown', 'export-posts-to-markdown' ); ?></h2>
@@ -221,6 +274,39 @@ class WP_Export_Posts_To_Markdown {
         );
 
         $this->persist_debug_log();
+
+        wp_safe_redirect( admin_url( 'tools.php?page=export-to-markdown' ) );
+        exit;
+    }
+
+    public function handle_save_settings() {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            $this->fail_and_die( esc_html__( 'You do not have permission to update settings.', 'export-posts-to-markdown' ) );
+        }
+
+        if ( ! isset( $_POST['wpexportmd_save_settings_nonce'] ) || ! wp_verify_nonce( $_POST['wpexportmd_save_settings_nonce'], 'wpexportmd_save_settings' ) ) {
+            $this->fail_and_die( esc_html__( 'Security check failed for settings.', 'export-posts-to-markdown' ) );
+        }
+
+        $options = get_option( 'wpexportmd_settings', array() );
+
+        $options['github_enabled'] = ! empty( $_POST['wpexportmd_github_enabled'] );
+        $options['github_repo']   = isset( $_POST['wpexportmd_github_repo'] ) ? sanitize_text_field( wp_unslash( $_POST['wpexportmd_github_repo'] ) ) : '';
+        $options['github_branch'] = isset( $_POST['wpexportmd_github_branch'] ) ? sanitize_text_field( wp_unslash( $_POST['wpexportmd_github_branch'] ) ) : 'main';
+        $options['github_path']   = isset( $_POST['wpexportmd_github_path'] ) ? sanitize_text_field( wp_unslash( $_POST['wpexportmd_github_path'] ) ) : 'exports';
+
+        if ( isset( $_POST['wpexportmd_github_token'] ) && '' !== $_POST['wpexportmd_github_token'] ) {
+            $options['github_token'] = sanitize_text_field( wp_unslash( $_POST['wpexportmd_github_token'] ) );
+        }
+
+        $options['drive_enabled'] = ! empty( $_POST['wpexportmd_drive_enabled'] );
+        if ( isset( $_POST['wpexportmd_drive_token'] ) && '' !== $_POST['wpexportmd_drive_token'] ) {
+            $options['drive_token'] = sanitize_text_field( wp_unslash( $_POST['wpexportmd_drive_token'] ) );
+        }
+
+        $options['drive_folder_id'] = isset( $_POST['wpexportmd_drive_folder_id'] ) ? sanitize_text_field( wp_unslash( $_POST['wpexportmd_drive_folder_id'] ) ) : '';
+
+        update_option( 'wpexportmd_settings', $options );
 
         wp_safe_redirect( admin_url( 'tools.php?page=export-to-markdown' ) );
         exit;

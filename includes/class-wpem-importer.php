@@ -10,12 +10,14 @@ class WPEM_Importer {
     private $media;
     private $log;
     private $fail;
+    private $sync;
 
-    public function __construct( $markdown, $media, $logger, $failer ) {
+    public function __construct( $markdown, $media, $logger, $failer, $sync = null ) {
         $this->markdown = $markdown;
         $this->media    = $media;
         $this->log      = $logger;
         $this->fail     = $failer;
+        $this->sync     = $sync;
     }
 
     public function import_file( $tmp_path, $name ) {
@@ -92,6 +94,10 @@ class WPEM_Importer {
         } else {
             $this->log_debug( 'Unsupported file extension: ' . $extension );
             $this->fail( esc_html__( 'Only ZIP archives or .md files are supported for import.', 'export-posts-to-markdown' ) );
+        }
+
+        if ( $this->sync ) {
+            $this->sync->push_import( $tmp_path, $name, $stats );
         }
 
         return $stats;
