@@ -155,6 +155,8 @@ class WP_Export_Posts_To_Markdown {
                     </tbody>
                 </table>
                 <?php submit_button( __( 'Download Markdown ZIP', 'export-posts-to-markdown' ) ); ?>
+                <?php submit_button( __( 'Export & Sync to GitHub', 'export-posts-to-markdown' ), 'secondary', 'wpexportmd_export_github', false ); ?>
+                <?php submit_button( __( 'Export & Sync to Drive', 'export-posts-to-markdown' ), 'secondary', 'wpexportmd_export_drive', false ); ?>
             </form>
         </div>
         <?php
@@ -170,6 +172,8 @@ class WP_Export_Posts_To_Markdown {
                 <input type="hidden" name="action" value="wpexportmd_import" />
                 <input type="file" name="wpexportmd_file" accept=".zip,.md" required />
                 <?php submit_button( __( 'Import Markdown', 'export-posts-to-markdown' ) ); ?>
+                <?php submit_button( __( 'Import & Sync to GitHub', 'export-posts-to-markdown' ), 'secondary', 'wpexportmd_import_github', false ); ?>
+                <?php submit_button( __( 'Import & Sync to Drive', 'export-posts-to-markdown' ), 'secondary', 'wpexportmd_import_drive', false ); ?>
             </form>
         </div>
         <?php
@@ -244,7 +248,8 @@ class WP_Export_Posts_To_Markdown {
             $this->fail_and_die( esc_html__( 'Security check failed.', 'export-posts-to-markdown' ) );
         }
 
-        $filters = array();
+        $filters         = array();
+        $sync_overrides  = array();
 
         if ( ! empty( $_POST['wpexportmd_status'] ) ) {
             $filters['status'] = sanitize_key( wp_unslash( $_POST['wpexportmd_status'] ) );
@@ -264,7 +269,15 @@ class WP_Export_Posts_To_Markdown {
 
         $filters['exclude_exported'] = ! empty( $_POST['wpexportmd_exclude_exported'] );
 
-        $this->exporter->export_all( $filters );
+        if ( ! empty( $_POST['wpexportmd_export_github'] ) ) {
+            $sync_overrides['github_enabled'] = true;
+        }
+
+        if ( ! empty( $_POST['wpexportmd_export_drive'] ) ) {
+            $sync_overrides['drive_enabled'] = true;
+        }
+
+        $this->exporter->export_all( $filters, $sync_overrides );
         $this->persist_debug_log();
 
         exit;
@@ -303,7 +316,15 @@ class WP_Export_Posts_To_Markdown {
             $this->fail_and_die( esc_html__( 'Uploaded file could not be read.', 'export-posts-to-markdown' ) );
         }
 
-        $stats = $this->importer->import_file( $tmp_path, $name );
+        $sync_overrides = array();
+        if ( ! empty( $_POST['wpexportmd_import_github'] ) ) {
+            $sync_overrides['github_enabled'] = true;
+        }
+        if ( ! empty( $_POST['wpexportmd_import_drive'] ) ) {
+            $sync_overrides['drive_enabled'] = true;
+        }
+
+        $stats = $this->importer->import_file( $tmp_path, $name, $sync_overrides );
 
         $this->log_debug(
             sprintf(

@@ -20,7 +20,7 @@ class WPEM_Importer {
         $this->sync     = $sync;
     }
 
-    public function import_file( $tmp_path, $name ) {
+    public function import_file( $tmp_path, $name, $sync_overrides = array() ) {
         $extension = strtolower( pathinfo( $name, PATHINFO_EXTENSION ) );
 
         $this->log_debug( 'Uploaded file detected: ' . $name . ' (.' . $extension . ').' );
@@ -98,6 +98,10 @@ class WPEM_Importer {
 
         if ( $this->sync ) {
             $this->sync->push_import( $tmp_path, $name, $stats );
+        }
+
+        if ( $this->sync ) {
+            $this->sync->push_import( $tmp_path, $name, $stats, $sync_overrides );
         }
 
         return $stats;

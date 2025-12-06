@@ -20,7 +20,7 @@ class WPEM_Exporter {
         $this->sync     = $sync;
     }
 
-    public function export_all( $filters = array() ) {
+    public function export_all( $filters = array(), $sync_overrides = array() ) {
         if ( ! class_exists( 'ZipArchive' ) ) {
             $this->log_debug( 'ZipArchive extension is missing.' );
             $this->fail( esc_html__( 'The ZipArchive PHP extension is required to build the export archive.', 'export-posts-to-markdown' ) );
@@ -137,7 +137,7 @@ class WPEM_Exporter {
         $download_name = 'wordpress-markdown-export-' . gmdate( 'Ymd-His' ) . '.zip';
 
         if ( $this->sync ) {
-            $this->sync->push_exports( $tmp_file, $download_name, $filters );
+            $this->sync->push_exports( $tmp_file, $download_name, $filters, $sync_overrides );
         }
 
         $this->log_debug( 'Preparing download: ' . $download_name . '.' );

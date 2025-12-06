@@ -14,28 +14,28 @@ class WPEM_Sync {
         $this->options = is_array( $options ) ? $options : array();
     }
 
-    public function push_exports( $file_path, $download_name, $filters = array() ) {
+    public function push_exports( $file_path, $download_name, $filters = array(), $overrides = array() ) {
         if ( ! file_exists( $file_path ) || ! is_readable( $file_path ) ) {
             $this->log_debug( 'Sync skipped: export file missing or unreadable.' );
             return;
         }
 
-        $this->push_to_github( $file_path, $download_name, $filters );
-        $this->push_to_drive( $file_path, $download_name );
+        $this->push_to_github( $file_path, $download_name, $filters, $overrides );
+        $this->push_to_drive( $file_path, $download_name, $overrides );
     }
 
-    public function push_import( $file_path, $download_name, $meta = array() ) {
+    public function push_import( $file_path, $download_name, $meta = array(), $overrides = array() ) {
         if ( ! file_exists( $file_path ) || ! is_readable( $file_path ) ) {
             $this->log_debug( 'Sync skipped: import file missing or unreadable.' );
             return;
         }
 
-        $this->push_to_github( $file_path, $download_name, array_merge( array( 'context' => 'import' ), $meta ) );
-        $this->push_to_drive( $file_path, $download_name );
+        $this->push_to_github( $file_path, $download_name, array_merge( array( 'context' => 'import' ), $meta ), $overrides );
+        $this->push_to_drive( $file_path, $download_name, $overrides );
     }
 
-    private function push_to_github( $file_path, $download_name, $filters ) {
-        if ( empty( $this->options['github_enabled'] ) ) {
+    private function push_to_github( $file_path, $download_name, $filters, $overrides = array() ) {
+        if ( ! $this->is_enabled( 'github', $overrides ) ) {
             return;
         }
 
@@ -117,8 +117,8 @@ class WPEM_Sync {
         }
     }
 
-    private function push_to_drive( $file_path, $download_name ) {
-        if ( empty( $this->options['drive_enabled'] ) ) {
+    private function push_to_drive( $file_path, $download_name, $overrides = array() ) {
+        if ( ! $this->is_enabled( 'drive', $overrides ) ) {
             return;
         }
 
@@ -182,5 +182,15 @@ class WPEM_Sync {
         if ( is_callable( $this->log ) ) {
             call_user_func( $this->log, $message );
         }
+    }
+
+    private function is_enabled( $key, $overrides ) {
+        $flag_key = $key . '_enabled';
+
+        if ( isset( $overrides[ $flag_key ] ) ) {
+            return (bool) $overrides[ $flag_key ];
+        }
+
+        return ! empty( $this->options[ $flag_key ] );
     }
 }
