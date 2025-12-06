@@ -3,7 +3,7 @@
 WordPress admin tool that lets you **export all published posts to Markdown in a ZIP** and **import Markdown back into WordPress**. Imports support front‑matter fields for titles, status, dates, taxonomies, custom fields, sticky posts, page templates, and local images packaged in a `_images/` folder.
 
 ## Features
-- Export all published posts (`post` type) to Markdown files in a ZIP, with YAML front matter (including `id`) and body converted from HTML.
+- Export all published posts (`post` type) to Markdown files in a ZIP, with YAML front matter (including `id`) and body converted from HTML; supports filtering by status/author/date and skipping posts already exported.
 - Import Markdown from a single `.md` or a ZIP containing multiple `.md` files.
 - Update posts by ID found in the filename/front matter or create new ones; preserves original ID in meta when creating.
 - Front matter support: `title`, `post_status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `taxonomy` (tax: term), `categories`, `tags`, `custom_fields`, `post_excerpt`, `featured_image`, `skip_file`, `id`.
@@ -18,7 +18,8 @@ WordPress admin tool that lets you **export all published posts to Markdown in a
 ## Usage
 ### Export
 1) Go to **Tools > Export to Markdown**.
-2) Click **Download Markdown ZIP**. You will get `wordpress-markdown-export-YYYYMMDD-HHMMSS.zip`.
+2) (Optional) Choose filters: status, author, date range, and whether to exclude posts already marked as exported.
+3) Click **Download Markdown ZIP**. You will get `wordpress-markdown-export-YYYYMMDD-HHMMSS.zip`.
 
 ### Import
 1) Go to **Tools > Export to Markdown**.
@@ -85,3 +86,4 @@ See `example-import.md` in this plugin for a full example of supported front mat
 - Only `post` post type is exported/imported by default.
 - Remote URLs for `featured_image` are ignored; use `_images/`.
 - Markdown/HTML conversion is intentionally basic; complex HTML may need manual adjustments.
+- Each exported post is flagged in post meta (`_wpexportmd_exported`) with a timestamp; use the checkbox to skip previously exported posts.
