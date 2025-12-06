@@ -1,16 +1,17 @@
 # Export Posts to Markdown
 
-WordPress admin tool that lets you **export all published posts to Markdown in a ZIP** and **import Markdown back into WordPress**. Imports support front‑matter fields for titles, status, dates, taxonomies, custom fields, sticky posts, page templates, and local images packaged in a `_images/` folder.
+WordPress admin tool that lets you **export all published posts to Markdown in a ZIP** and **import Markdown back into WordPress**. Imports support front matter fields for titles, status, dates, taxonomies, custom fields, sticky posts, page templates, and local images packaged in a `_images/` folder.
 
 ## Features
 - Export all published posts (`post` type) to Markdown files in a ZIP, with YAML front matter (including `id`) and body converted from HTML; supports filtering by status/author/date and skipping posts already exported.
-- Import Markdown from a single `.md` or a ZIP containing multiple `.md` files.
-- Update posts by ID found in the filename/front matter or create new ones; preserves original ID in meta when creating.
+- Import Markdown from a single `.md`, a ZIP containing multiple `.md` files, a GitHub file path (raw), or a Google Drive file ID.
+- Update posts by `id` found in the front matter (not the filename) or create new ones; preserves the original ID in meta when creating.
 - Front matter support: `title`, `post_status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `taxonomy` (tax: term), `categories`, `tags`, `custom_fields`, `post_excerpt`, `featured_image`, `skip_file`, `id`.
 - Arrays in front matter can be provided as inline lists (`[ "foo", "bar" ]`) or YAML block lists (`tags:\n  - foo\n  - bar`).
 - Media handling: include an `_images/` directory in ZIPs; images are uploaded once, reused, and can be set as featured images; Markdown image URLs are rewritten to uploaded URLs.
 - Debug logs are shown as admin notices on the Tools page after runs.
-- Optional GitHub/Google Drive sync: enable either integration from the Tools page and provide repo/path/branch/token (GitHub) or access token/folder (Drive) to push the ZIP on export and backup imported files.
+- Optional GitHub/Google Drive sync: enable either integration from the Integrations page and provide repo/path/branch/token (GitHub) or access token/folder (Drive) to push exported Markdown files and optionally sync imports.
+- Optional scheduled auto-sync to GitHub and/or Drive at a user-defined interval (minutes); only runs when integrations are enabled and configured.
 
 ## Installation
 1) Copy the plugin folder into `wp-content/plugins/export-posts-to-markdown/`.
@@ -21,13 +22,16 @@ WordPress admin tool that lets you **export all published posts to Markdown in a
 1) Go to **Tools > Export to Markdown**.
 2) (Optional) Choose filters: status, author, date range, and whether to exclude posts already marked as exported.
 3) Click **Download Markdown ZIP**. You will get `wordpress-markdown-export-YYYYMMDD-HHMMSS.zip`.
+4) Export buttons: **Download Markdown ZIP** always; if GitHub/Drive integrations are enabled, you also see **Export to GitHub** and **Export to Drive** (exports and pushes to the selected target while downloading).
 
 ### Import
-1) Go to **Tools > Export to Markdown**.
-2) Upload either:
-   - A single `.md` file, or
-   - A ZIP containing `.md` files and an optional `_images/` directory for local images/featured images.
-3) Submit to import. Posts with matching IDs are updated; otherwise new posts are created.
+1) Go to **Tools > Export to Markdown > Import**.
+2) Choose a source (each has its own form):
+   - Upload a single `.md` file.
+   - Upload a `.zip` containing `.md` files and an optional `_images/` directory.
+   - Import from Google Drive by file ID (requires Drive integration enabled).
+   - Import from GitHub by repo-relative path (requires GitHub integration enabled; repo must be `owner/repo`, no `.git` suffix; path prefix is taken from Integrations).
+3) Submit to import. Posts with matching `id` in front matter are updated; otherwise new posts are created. Sync buttons (GitHub/Drive) appear only when those integrations are enabled.
 
 ### What happens during import (add/edit flow)
 1) Capability + nonce checks run.
@@ -35,12 +39,17 @@ WordPress admin tool that lets you **export all published posts to Markdown in a
 3) Each `.md` file is parsed for front matter and content.
 4) If `skip_file: yes`, the file is skipped.
 5) Post lookup:
-   - If `id` is in the filename or front matter and that post exists, it is **updated**.
+   - If `id` is in the front matter and that post exists, it is **updated**.
    - Otherwise a new post is **created**; any provided `id` is saved in `_wpexportmd_original_id` for reference.
 6) Applied fields: `title`, `post_status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `post_excerpt`, `custom_fields`, `taxonomy`, `categories`, `tags`.
 7) Content: Markdown is converted to HTML; images are rewritten to the uploaded/reused URLs. Markdown image titles become captions via `<figure><figcaption>`.
-8) Featured image: if `featured_image` points to `_images/...`, it’s set from the uploaded/reused attachment.
+8) Featured image: if `featured_image` points to `_images/...`, it is set from the uploaded/reused attachment.
 9) Debug log: results and any issues are stored in a transient and appended to `wp-content/uploads/wpexportmd.log`.
+
+### Scheduled auto-sync
+- In **Tools > Export to Markdown > Integrations**, enable GitHub and/or Drive and toggle the relevant “Enable scheduled auto-sync” checkbox.
+- Set the **Auto-sync interval (minutes)** (minimum 5). The cron job uses this interval to export posts (excluding ones already flagged as exported) and push to the enabled targets without downloading.
+- Disabling the checkboxes or removing required credentials stops the scheduled job.
 
 ## Markdown Front Matter Reference
 Front matter is YAML between `---` lines at the top of the `.md` file.
@@ -80,11 +89,9 @@ Front matter is YAML between `---` lines at the top of the `.md` file.
 - Both `_images/...` and `/_images/...` paths are accepted for inline images and `featured_image`.
 - Images are uploaded to the Media Library once and reused on subsequent imports. `_wpexportmd_source_path` meta tracks the source path.
 
-## Example
-See `example-import.md` in this plugin for a full example of supported front matter and Markdown.
-
 ## Notes & Limits
 - Only `post` post type is exported/imported by default.
 - Remote URLs for `featured_image` are ignored; use `_images/`.
 - Markdown/HTML conversion is intentionally basic; complex HTML may need manual adjustments.
 - Each exported post is flagged in post meta (`_wpexportmd_exported`) with a timestamp; use the checkbox to skip previously exported posts.
+- GitHub repo must be set as `owner/repo` (without `.git`). Paths use the optional prefix set in Integrations; import paths are relative to that prefix.

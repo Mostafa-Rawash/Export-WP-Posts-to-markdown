@@ -20,7 +20,7 @@ class WPEM_Exporter {
         $this->sync     = $sync;
     }
 
-    public function export_all( $filters = array(), $sync_overrides = array() ) {
+    public function export_all( $filters = array(), $sync_overrides = array(), $stream_download = true ) {
         if ( ! class_exists( 'ZipArchive' ) ) {
             $this->log_debug( 'ZipArchive extension is missing.' );
             $this->fail( esc_html__( 'The ZipArchive PHP extension is required to build the export archive.', 'export-posts-to-markdown' ) );
@@ -114,6 +114,7 @@ class WPEM_Exporter {
         $this->log_debug( 'ZIP archive initialised.' );
         $used_filenames = array();
         $added_count    = 0;
+        $exported_files = array();
 
         foreach ( $posts as $post ) {
             $markdown = $this->post_to_markdown( $post );
@@ -122,6 +123,10 @@ class WPEM_Exporter {
             $added_count++;
             update_post_meta( $post->ID, '_wpexportmd_exported', 'yes' );
             update_post_meta( $post->ID, '_wpexportmd_last_exported', gmdate( 'Y-m-d H:i:s' ) );
+            $exported_files[] = array(
+                'name'    => $filename,
+                'content' => $markdown,
+            );
         }
 
         $zip->close();
@@ -137,14 +142,16 @@ class WPEM_Exporter {
         $download_name = 'wordpress-markdown-export-' . gmdate( 'Ymd-His' ) . '.zip';
 
         if ( $this->sync ) {
-            $this->sync->push_exports( $tmp_file, $download_name, $filters, $sync_overrides );
+            $this->sync->push_export_files( $exported_files, $download_name, $filters, $sync_overrides );
         }
 
-        $this->log_debug( 'Preparing download: ' . $download_name . '.' );
-
-        call_user_func( $this->stream, $tmp_file, $download_name );
-
-        $this->log_debug( 'Export completed successfully.' );
+        if ( $stream_download ) {
+            $this->log_debug( 'Preparing download: ' . $download_name . '.' );
+            call_user_func( $this->stream, $tmp_file, $download_name );
+            $this->log_debug( 'Export completed successfully.' );
+        } else {
+            $this->log_debug( 'Download skipped (sync-only mode) for ' . $download_name . '.' );
+        }
 
         @unlink( $tmp_file );
     }
@@ -209,20 +216,42 @@ class WPEM_Exporter {
     }
 
     private function generate_post_filename( $post, &$used_filenames ) {
-        $slug = $post->post_name ? $post->post_name : 'post-' . $post->ID;
-        $slug = sanitize_title( $slug );
+        $segments   = array();
+        $ancestors  = array_reverse( get_post_ancestors( $post ) );
 
-        if ( '' === $slug ) {
-            $slug = 'post-' . $post->ID;
+        foreach ( $ancestors as $ancestor_id ) {
+            $ancestor = get_post( $ancestor_id );
+
+            if ( ! $ancestor ) {
+                continue;
+            }
+
+            $ancestor_slug = $ancestor->post_name ? sanitize_title( $ancestor->post_name ) : sanitize_title( $ancestor->post_title );
+
+            if ( '' === $ancestor_slug ) {
+                $ancestor_slug = 'post-' . $ancestor->ID;
+            }
+
+            $segments[] = $ancestor_slug;
         }
 
-        $base_name = $slug;
-        $filename  = $post->ID . '.md';
+        $current_slug = $post->post_name ? sanitize_title( $post->post_name ) : sanitize_title( $post->post_title );
+
+        if ( '' === $current_slug ) {
+            $current_slug = 'post-' . $post->ID;
+        }
+
+        $base_name  = $current_slug;
+        $path_parts = $segments;
+        $path_parts[] = $base_name;
+
+        $filename  = implode( '/', $path_parts ) . '.md';
         $duplicate = 1;
 
         while ( isset( $used_filenames[ $filename ] ) ) {
             $duplicate++;
-            $filename = sprintf( '%s-%d.md', $base_name, $duplicate );
+            $path_parts[ count( $path_parts ) - 1 ] = sprintf( '%s-%d', $base_name, $duplicate );
+            $filename = implode( '/', $path_parts ) . '.md';
         }
 
         $used_filenames[ $filename ] = true;
@@ -233,6 +262,12 @@ class WPEM_Exporter {
     private function log_debug( $message ) {
         if ( is_callable( $this->log ) ) {
             call_user_func( $this->log, $message );
+        }
+    }
+
+    private function fail( $message ) {
+        if ( is_callable( $this->fail ) ) {
+            call_user_func( $this->fail, $message );
         }
     }
 }

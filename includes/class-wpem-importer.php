@@ -97,10 +97,6 @@ class WPEM_Importer {
         }
 
         if ( $this->sync ) {
-            $this->sync->push_import( $tmp_path, $name, $stats );
-        }
-
-        if ( $this->sync ) {
             $this->sync->push_import( $tmp_path, $name, $stats, $sync_overrides );
         }
 
@@ -159,7 +155,7 @@ class WPEM_Importer {
             return 'skipped';
         }
 
-        $original_id = $this->extract_post_id_from_filename( $filename, $meta );
+        $original_id = $this->extract_post_id_from_meta( $meta );
         $post_id     = $original_id ? absint( $original_id ) : 0;
 
         $title  = ! empty( $meta['title'] ) ? wp_strip_all_tags( $meta['title'] ) : __( 'Imported Markdown', 'export-posts-to-markdown' );
@@ -364,7 +360,7 @@ class WPEM_Importer {
         }
     }
 
-    private function extract_post_id_from_filename( $filename, $meta ) {
+    private function extract_post_id_from_meta( $meta ) {
         if ( ! empty( $meta['id'] ) && is_numeric( $meta['id'] ) ) {
             return absint( $meta['id'] );
         }
