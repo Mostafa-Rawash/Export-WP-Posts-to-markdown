@@ -212,6 +212,8 @@ class WPEM_Importer {
                 $result_status = 'updated';
                 $this->assign_terms_from_meta( $post_id, $meta );
                 $this->apply_custom_fields( $post_id, $meta );
+                $this->apply_folder_path_meta( $post_id, $meta );
+                $this->apply_rank_math_meta( $post_id, $meta );
                 $this->media->set_featured_image( $post_id, isset( $meta['featured_image'] ) ? $meta['featured_image'] : '', $media_map );
                 $this->maybe_apply_page_template( $post_id, $meta );
                 $this->maybe_apply_sticky( $post_id, $meta );
@@ -230,6 +232,8 @@ class WPEM_Importer {
                 }
                 $this->assign_terms_from_meta( $inserted_id, $meta );
                 $this->apply_custom_fields( $inserted_id, $meta );
+                $this->apply_folder_path_meta( $inserted_id, $meta );
+                $this->apply_rank_math_meta( $inserted_id, $meta );
                 $this->media->set_featured_image( $inserted_id, isset( $meta['featured_image'] ) ? $meta['featured_image'] : '', $media_map );
                 $this->maybe_apply_page_template( $inserted_id, $meta );
                 $this->maybe_apply_sticky( $inserted_id, $meta );
@@ -335,6 +339,53 @@ class WPEM_Importer {
             }
 
             update_post_meta( $post_id, $key, $value );
+        }
+    }
+
+    private function apply_folder_path_meta( $post_id, $meta ) {
+        if ( empty( $meta['folder_path'] ) ) {
+            return;
+        }
+
+        update_post_meta( $post_id, '_wpexportmd_folder_path', $meta['folder_path'] );
+    }
+
+    private function apply_rank_math_meta( $post_id, $meta ) {
+        $description = '';
+        $keywords    = '';
+
+        if ( ! empty( $meta['meta_description'] ) ) {
+            $description = $meta['meta_description'];
+        } elseif ( ! empty( $meta['metadata'] ) ) {
+            $description = $meta['metadata'];
+        }
+
+        if ( ! empty( $meta['meta_keywords'] ) ) {
+            $keywords = $meta['meta_keywords'];
+        } elseif ( ! empty( $meta['keyword'] ) ) {
+            $keywords = $meta['keyword'];
+        } elseif ( ! empty( $meta['keywords'] ) ) {
+            $keywords = $meta['keywords'];
+        }
+
+        if ( is_array( $keywords ) ) {
+            $clean_keywords = array();
+            foreach ( $keywords as $keyword ) {
+                $keyword = wp_strip_all_tags( (string) $keyword );
+                if ( '' !== $keyword ) {
+                    $clean_keywords[] = $keyword;
+                }
+            }
+            $keywords = implode( ', ', $clean_keywords );
+        }
+
+        if ( '' !== $description ) {
+            update_post_meta( $post_id, 'rank_math_description', $description );
+        }
+
+        if ( '' !== $keywords ) {
+            update_post_meta( $post_id, 'rank_math_focus_keyword', $keywords );
+            update_post_meta( $post_id, 'rank_math_focus_keywords', $keywords );
         }
     }
 
@@ -558,6 +609,41 @@ class WPEM_Importer {
 
         if ( ! empty( $meta['featured_image'] ) ) {
             $validated['featured_image'] = trim( (string) $meta['featured_image'] );
+        }
+
+        if ( ! empty( $meta['folder_path'] ) ) {
+            $validated['folder_path'] = trim( (string) $meta['folder_path'] );
+        }
+
+        if ( empty( $meta['meta_description'] ) && ! empty( $meta['metadata'] ) ) {
+            $meta['meta_description'] = $meta['metadata'];
+        }
+
+        if ( empty( $meta['meta_keywords'] ) ) {
+            if ( ! empty( $meta['keyword'] ) ) {
+                $meta['meta_keywords'] = $meta['keyword'];
+            } elseif ( ! empty( $meta['keywords'] ) ) {
+                $meta['meta_keywords'] = $meta['keywords'];
+            }
+        }
+
+        if ( ! empty( $meta['meta_description'] ) ) {
+            $validated['meta_description'] = wp_strip_all_tags( $meta['meta_description'] );
+        }
+
+        if ( ! empty( $meta['meta_keywords'] ) ) {
+            if ( is_array( $meta['meta_keywords'] ) ) {
+                $clean_keywords = array();
+                foreach ( $meta['meta_keywords'] as $keyword ) {
+                    $keyword = wp_strip_all_tags( (string) $keyword );
+                    if ( '' !== $keyword ) {
+                        $clean_keywords[] = $keyword;
+                    }
+                }
+                $validated['meta_keywords'] = implode( ', ', $clean_keywords );
+            } else {
+                $validated['meta_keywords'] = wp_strip_all_tags( $meta['meta_keywords'] );
+            }
         }
 
         if ( isset( $meta['skip_file'] ) ) {

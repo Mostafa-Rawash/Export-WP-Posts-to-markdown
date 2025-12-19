@@ -1,0 +1,192 @@
+{
+  "main": {
+    "id": "33dc5117f0e32a52",
+    "type": "split",
+    "children": [
+      {
+        "id": "794040bc9d217f64",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f915980a09725c85",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "saas.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "saas"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "7f26d50086099c91",
+    "type": "split",
+    "children": [
+      {
+        "id": "09164feb8ecaa449",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "8132ea16e1eff40e",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "5c3bac214480c518",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "8e57e1ddf0a8124e",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "5705635e965c7ddd",
+    "type": "split",
+    "children": [
+      {
+        "id": "e99bb4023cc84cbd",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7028b56cbbbee79d",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "saas.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for saas"
+            }
+          },
+          {
+            "id": "76da00de6d5773f8",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "saas.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from saas"
+            }
+          },
+          {
+            "id": "5e190090d5ed8eb1",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "ed06e1d229e120b3",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "80412decb1d0433f",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "saas.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of saas"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "f915980a09725c85",
+  "lastOpenFiles": [
+    "تكامل الفاتورة الالكترونية مع منصة eDariba- لماذا يُعد الاعتماد على نظام ERP المنفصل مخاطرة غير محسوبة؟.md",
+    "saas.md",
+    "تكامل الفاتورة الالكترونية مع منصة eDariba- لماذا يُعد الاعتماد على نظام ERP المنفصل مخاطرة غير محسوبة؟ 1.md"
+  ]
+}

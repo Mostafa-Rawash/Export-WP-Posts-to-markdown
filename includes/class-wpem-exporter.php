@@ -165,6 +165,12 @@ class WPEM_Exporter {
         $author     = get_the_author_meta( 'display_name', $post->post_author );
         $excerpt    = get_post_field( 'post_excerpt', $post );
         $thumbnail  = get_the_post_thumbnail_url( $post, 'full' );
+        $seo_desc   = get_post_meta( $post->ID, 'rank_math_description', true );
+        $seo_keys   = get_post_meta( $post->ID, 'rank_math_focus_keyword', true );
+
+        if ( '' === $seo_keys ) {
+            $seo_keys = get_post_meta( $post->ID, 'rank_math_focus_keywords', true );
+        }
 
         $categories = get_the_category( $post->ID );
         $tags       = get_the_tags( $post->ID );
@@ -201,11 +207,31 @@ class WPEM_Exporter {
 
         if ( $excerpt ) {
             $excerpt_text = preg_replace( '/\s+/', ' ', wp_strip_all_tags( $excerpt ) );
-            $md_lines[]   = 'excerpt: "' . $this->markdown->escape_yaml( trim( $excerpt_text ) ) . '"';
+            $escaped_excerpt = $this->markdown->escape_yaml( trim( $excerpt_text ) );
+            $md_lines[]      = 'excerpt: "' . $escaped_excerpt . '"';
+            $md_lines[]      = 'post_excerpt: "' . $escaped_excerpt . '"';
         }
 
         if ( $thumbnail ) {
             $md_lines[] = 'featured_image: ' . esc_url_raw( $thumbnail );
+        }
+
+        $folder_path = get_post_meta( $post->ID, '_wpexportmd_folder_path', true );
+        if ( $folder_path ) {
+            $md_lines[] = 'folder_path: "' . $this->markdown->escape_yaml( $folder_path ) . '"';
+        }
+
+        if ( $seo_desc ) {
+            $md_lines[] = 'metadata: "' . $this->markdown->escape_yaml( $seo_desc ) . '"';
+        }
+
+        if ( $seo_keys ) {
+            $keywords_list = is_array( $seo_keys ) ? $seo_keys : array_map( 'trim', explode( ',', (string) $seo_keys ) );
+            $keywords_list = array_filter( $keywords_list, 'strlen' );
+            if ( ! empty( $keywords_list ) ) {
+                $md_lines[] = 'keywords:';
+                $md_lines   = array_merge( $md_lines, $this->markdown->format_yaml_block_list( $keywords_list ) );
+            }
         }
 
         $md_lines[] = '---';
@@ -226,24 +252,21 @@ class WPEM_Exporter {
                 continue;
             }
 
-            $ancestor_slug = $ancestor->post_name ? sanitize_title( $ancestor->post_name ) : sanitize_title( $ancestor->post_title );
-
-            if ( '' === $ancestor_slug ) {
-                $ancestor_slug = 'post-' . $ancestor->ID;
-            }
-
-            $segments[] = $ancestor_slug;
+            $ancestor_title = $ancestor->post_title ? $ancestor->post_title : $ancestor->post_name;
+            $ancestor_name  = $this->normalize_filename_segment( $ancestor_title, $ancestor->ID );
+            $segments[]     = $ancestor_name;
         }
 
-        $current_slug = $post->post_name ? sanitize_title( $post->post_name ) : sanitize_title( $post->post_title );
-
-        if ( '' === $current_slug ) {
-            $current_slug = 'post-' . $post->ID;
-        }
-
-        $base_name  = $current_slug;
+        $current_title = $post->post_title ? $post->post_title : $post->post_name;
+        $base_name     = $this->normalize_filename_segment( $current_title, $post->ID );
         $path_parts = $segments;
         $path_parts[] = $base_name;
+
+        $folder_path = get_post_meta( $post->ID, '_wpexportmd_folder_path', true );
+        $folder_parts = $this->normalize_folder_path( $folder_path );
+        if ( ! empty( $folder_parts ) ) {
+            $path_parts = array_merge( $folder_parts, $path_parts );
+        }
 
         $filename  = implode( '/', $path_parts ) . '.md';
         $duplicate = 1;
@@ -257,6 +280,47 @@ class WPEM_Exporter {
         $used_filenames[ $filename ] = true;
 
         return $filename;
+    }
+
+    private function normalize_filename_segment( $value, $fallback_id ) {
+        $name = wp_strip_all_tags( (string) $value );
+        $name = preg_replace( '/\s+/u', ' ', trim( $name ) );
+        $name = preg_replace( '/[\\\\\/:*?"<>|]+/', '-', $name );
+        $name = trim( $name, " .\t\n\r\0\x0B" );
+
+        if ( '' === $name ) {
+            $name = 'post-' . (int) $fallback_id;
+        }
+
+        return $name;
+    }
+
+    private function normalize_folder_path( $value ) {
+        $value = wp_strip_all_tags( (string) $value );
+        if ( '' === $value ) {
+            return array();
+        }
+
+        $value = str_replace( '\\', '/', $value );
+        $value = preg_replace( '#/+#', '/', $value );
+        $value = trim( $value, '/' );
+        if ( '' === $value ) {
+            return array();
+        }
+
+        $parts = explode( '/', $value );
+        $clean = array();
+
+        foreach ( $parts as $part ) {
+            $part = preg_replace( '/\s+/u', ' ', trim( $part ) );
+            $part = preg_replace( '/[\\\\\/:*?"<>|]+/', '-', $part );
+            $part = trim( $part, " .\t\n\r\0\x0B" );
+            if ( '' !== $part ) {
+                $clean[] = $part;
+            }
+        }
+
+        return $clean;
     }
 
     private function log_debug( $message ) {
