@@ -222,7 +222,7 @@ class WPEM_Exporter {
         }
 
         if ( $seo_desc ) {
-            $md_lines[] = 'metadata: "' . $this->markdown->escape_yaml( $seo_desc ) . '"';
+            $md_lines[] = 'meta_description: "' . $this->markdown->escape_yaml( $seo_desc ) . '"';
         }
 
         if ( $seo_keys ) {

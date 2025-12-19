@@ -6,7 +6,7 @@ WordPress admin tool that lets you **export all published posts to Markdown in a
 - Export all published posts (`post` type) to Markdown files in a ZIP, with YAML front matter (including `id`) and body converted from HTML. Filenames use post titles (including Arabic) with filesystem-safe cleanup.
 - Import Markdown from a single `.md` or a ZIP containing multiple `.md` files.
 - Update posts by `id` found in front matter or create new ones; preserves the original ID in meta when creating.
-- Front matter support: `title`, `post_status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `taxonomy` (tax: term), `categories`, `tags`, `custom_fields`, `excerpt`, `post_excerpt`, `featured_image`, `folder_path`, `meta_description`, `meta_keywords`, `metadata`, `keyword`, `keywords`, `skip_file`, `id`.
+- Front matter support: `title`, `status`, `post_status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `taxonomy` (tax: term), `categories`, `tags`, `custom_fields`, `excerpt`, `post_excerpt`, `featured_image`, `folder_path`, `meta_description`, `meta_keywords`, `metadata`, `keyword`, `keywords`, `skip_file`, `id`.
 - Arrays in front matter can be provided as inline lists (`[ "foo", "bar" ]`) or YAML block lists (`tags:\n  - foo\n  - bar`). Keyword lists are normalized to a comma-separated string on import for Rank Math.
 - Media handling: include an `_images/` directory in ZIPs; images are uploaded once, reused, and can be set as featured images; Markdown image URLs are rewritten to uploaded URLs.
 - Debug logs are shown as admin notices on the Tools page after runs.
@@ -35,7 +35,7 @@ WordPress admin tool that lets you **export all published posts to Markdown in a
 5) Post lookup:
    - If `id` is in the front matter and that post exists, it is **updated**.
    - Otherwise a new post is **created**; any provided `id` is saved in `_wpexportmd_original_id` for reference.
-6) Applied fields: `title`, `post_status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `post_excerpt`, `custom_fields`, `taxonomy`, `categories`, `tags`, `folder_path`, `meta_description`, `meta_keywords`.
+6) Applied fields: `title`, `status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `post_excerpt`, `custom_fields`, `taxonomy`, `categories`, `tags`, `folder_path`, `meta_description`, `meta_keywords`.
 7) Content: Markdown is converted to HTML; images are rewritten to the uploaded/reused URLs. Markdown image titles become captions via `<figure><figcaption>`.
 8) Featured image: if `featured_image` points to `_images/...`, it is set from the uploaded/reused attachment.
 9) Debug log: results and any issues are stored in a transient and appended to `wp-content/uploads/wpexportmd.log`.
@@ -44,7 +44,8 @@ WordPress admin tool that lets you **export all published posts to Markdown in a
 Front matter is YAML between `---` lines at the top of the `.md` file.
 
 - `title`: Post title.
-- `post_status`: `publish` | `draft` | `pending` | `future`.
+- `status`: `publish` | `draft` | `pending` | `future` (preferred).
+- `post_status`: Same as `status` (legacy key).
 - `post_date`: Datetime, e.g. `2024-12-01 20:14:59`.
 - `slug`: Post slug.
 - `menu_order`: Integer.
