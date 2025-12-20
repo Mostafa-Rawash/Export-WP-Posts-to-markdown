@@ -84,8 +84,13 @@ class WPEM_Media {
                 'url' => wp_get_attachment_url( $attachment_id ),
             );
 
+            $entry_key = str_replace( '\\', '/', $entry_name );
+            $entry_key = ltrim( $entry_key, '/' );
+
             $map[ $normalized ]       = $attachment;
             $map[ '/' . $normalized ] = $attachment;
+            $map[ $entry_key ]        = $attachment;
+            $map[ '/' . $entry_key ]  = $attachment;
         }
 
         return $map;

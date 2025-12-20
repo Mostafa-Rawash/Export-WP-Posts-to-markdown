@@ -37,6 +37,7 @@ WordPress admin tool that lets you **export all published posts to Markdown in a
    - Otherwise a new post is **created**; any provided `id` is saved in `_wpexportmd_original_id` for reference.
 6) Applied fields: `title`, `status`, `post_date`, `slug`, `menu_order`, `comment_status`, `page_template`, `stick_post`, `post_excerpt`, `custom_fields`, `taxonomy`, `categories`, `tags`, `folder_path`, `meta_description`, `meta_keywords`.
 7) Content: Markdown is converted to HTML; images are rewritten to the uploaded/reused URLs. Markdown image titles become captions via `<figure><figcaption>`.
+7) Content is stored as Gutenberg blocks (paragraphs/headings/lists/tables/etc.) instead of a single Classic block.
 8) Featured image: if `featured_image` points to `_images/...`, it is set from the uploaded/reused attachment.
 9) Debug log: results and any issues are stored in a transient and appended to `wp-content/uploads/wpexportmd.log`.
 

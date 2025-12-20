@@ -100,6 +100,7 @@ class WPEM_Markdown {
         $lines     = explode( "\n", $markdown );
         $html      = '';
         $in_list   = false;
+        $list_type = '';
         $in_quote  = false;
         $in_code   = false;
         $code_buf  = array();
@@ -117,10 +118,11 @@ class WPEM_Markdown {
             $paragraph = array();
         };
 
-        $close_list = function () use ( &$in_list, &$html ) {
+        $close_list = function () use ( &$in_list, &$html, &$list_type ) {
             if ( $in_list ) {
-                $html   .= '</ul>';
+                $html   .= ( 'ol' === $list_type ) ? '</ol>' : '</ul>';
                 $in_list = false;
+                $list_type = '';
             }
         };
 
@@ -204,12 +206,28 @@ class WPEM_Markdown {
                 continue;
             }
 
-            if ( preg_match( '/^- (.+)$/', $trimmed, $matches ) ) {
+            if ( preg_match( '/^[-*] (.+)$/', $trimmed, $matches ) ) {
                 $flush_paragraph();
                 $close_quote();
-                if ( ! $in_list ) {
-                    $html   .= '<ul>';
-                    $in_list = true;
+                if ( ! $in_list || 'ul' !== $list_type ) {
+                    $close_list();
+                    $html      .= '<ul>';
+                    $in_list    = true;
+                    $list_type  = 'ul';
+                }
+
+                $html .= '<li>' . $this->apply_inline_markdown( $matches[1], $media_map ) . '</li>';
+                continue;
+            }
+
+            if ( preg_match( '/^\d+\.\s+(.+)$/', $trimmed, $matches ) ) {
+                $flush_paragraph();
+                $close_quote();
+                if ( ! $in_list || 'ol' !== $list_type ) {
+                    $close_list();
+                    $html      .= '<ol>';
+                    $in_list    = true;
+                    $list_type  = 'ol';
                 }
 
                 $html .= '<li>' . $this->apply_inline_markdown( $matches[1], $media_map ) . '</li>';
@@ -237,6 +255,10 @@ class WPEM_Markdown {
                 $filename = trim( $matches[1] );
                 if ( '' === $filename ) {
                     return $matches[0];
+                }
+
+                if ( 0 === strpos( $filename, '_images/' ) || 0 === strpos( $filename, '/_images/' ) ) {
+                    return '![](' . ltrim( $filename, '/' ) . ')';
                 }
 
                 return '![](_images/' . $filename . ')';
@@ -364,7 +386,9 @@ class WPEM_Markdown {
         $meta    = array();
         $content = $markdown;
 
-        if ( preg_match( '/^---\s*\n(.*?)\n---\s*\n/s', $markdown, $matches ) ) {
+        $markdown = preg_replace( '/^\xEF\xBB\xBF/', '', (string) $markdown );
+
+        if ( preg_match( '/^\s*---\s*\r?\n(.*?)\r?\n---\s*\r?\n/s', $markdown, $matches ) ) {
             $front_matter = trim( $matches[1] );
             $content      = substr( $markdown, strlen( $matches[0] ) );
             $lines        = preg_split( "/\r\n|\r|\n/", $front_matter );
@@ -473,17 +497,6 @@ class WPEM_Markdown {
 
     private function apply_inline_markdown( $text, $media_map = array() ) {
         $text = preg_replace_callback(
-            '/`([^`]+)`/',
-            function ( $matches ) {
-                return '<code>' . esc_html( $matches[1] ) . '</code>';
-            },
-            $text
-        );
-
-        $text = preg_replace( '/\*\*(.+?)\*\*/s', '<strong>$1</strong>', $text );
-        $text = preg_replace( '/\*(.+?)\*/s', '<em>$1</em>', $text );
-
-        $text = preg_replace_callback(
             '/!\[([^\]]*)\]\(\s*("?)([^" \t\)]+)\2(?:\s+"([^"]*)")?\s*\)/',
             function ( $matches ) use ( $media_map ) {
                 $alt     = esc_attr( $matches[1] );
@@ -492,7 +505,7 @@ class WPEM_Markdown {
                 $src     = $this->resolve_media_src( $raw_src, $media_map );
                 $title   = isset( $matches[4] ) ? trim( $matches[4] ) : '';
 
-                $img = '<img src="' . esc_url( $src ) . '" alt="' . $alt . '"';
+                $img = '<img src="' . esc_url( $src ) . '" alt="' . $alt . '" style="width: -webkit-fill-available; max-width: 100%; height: auto;"';
                 if ( '' !== $title ) {
                     $img .= ' title="' . esc_attr( $title ) . '"';
                 }
@@ -510,7 +523,7 @@ class WPEM_Markdown {
         $text = preg_replace_callback(
             '/\[([^\]]+)\]\(([^)]+)\)/',
             function ( $matches ) {
-                $label = esc_html( $matches[1] );
+                $label = $this->format_link_label( $matches[1] );
                 $href  = esc_url( $matches[2] );
 
                 return '<a href="' . $href . '">' . $label . '</a>';
@@ -518,12 +531,51 @@ class WPEM_Markdown {
             $text
         );
 
+        $text = preg_replace_callback(
+            '/`([^`]+)`/',
+            function ( $matches ) {
+                return '<code>' . esc_html( $matches[1] ) . '</code>';
+            },
+            $text
+        );
+
+        $text = preg_replace( '/\*\*(.+?)\*\*/s', '<strong>$1</strong>', $text );
+        $text = preg_replace( '/\*(.+?)\*/s', '<em>$1</em>', $text );
+
         return $text;
+    }
+
+    private function format_link_label( $label ) {
+        $label = esc_html( $label );
+
+        $label = preg_replace_callback(
+            '/`([^`]+)`/',
+            function ( $matches ) {
+                return '<code>' . esc_html( $matches[1] ) . '</code>';
+            },
+            $label
+        );
+
+        $label = preg_replace( '/\*\*(.+?)\*\*/s', '<strong>$1</strong>', $label );
+        $label = preg_replace( '/\*(.+?)\*/s', '<em>$1</em>', $label );
+
+        return $label;
     }
 
     private function resolve_media_src( $src, $media_map ) {
         if ( empty( $media_map ) ) {
             return $src;
+        }
+
+        $src_key = str_replace( '\\', '/', (string) $src );
+        $src_key = ltrim( $src_key, '/' );
+
+        if ( $src_key && isset( $media_map[ $src_key ] ) && ! empty( $media_map[ $src_key ]['url'] ) ) {
+            return $media_map[ $src_key ]['url'];
+        }
+
+        if ( $src_key && isset( $media_map[ '/' . $src_key ] ) && ! empty( $media_map[ '/' . $src_key ]['url'] ) ) {
+            return $media_map[ '/' . $src_key ]['url'];
         }
 
         $normalized = $this->normalize_media_path( $src );
@@ -536,6 +588,17 @@ class WPEM_Markdown {
 
         if ( $normalized && isset( $media_map[ $with_slash ] ) && ! empty( $media_map[ $with_slash ]['url'] ) ) {
             return $media_map[ $with_slash ]['url'];
+        }
+
+        if ( '' === $normalized && $src_key ) {
+            $basename = basename( $src_key );
+            $fallback = '_images/' . $basename;
+            if ( isset( $media_map[ $fallback ] ) && ! empty( $media_map[ $fallback ]['url'] ) ) {
+                return $media_map[ $fallback ]['url'];
+            }
+            if ( isset( $media_map[ '/' . $fallback ] ) && ! empty( $media_map[ '/' . $fallback ]['url'] ) ) {
+                return $media_map[ '/' . $fallback ]['url'];
+            }
         }
 
         return $src;

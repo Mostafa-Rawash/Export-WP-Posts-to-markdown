@@ -168,6 +168,7 @@ class WPEM_Importer {
 
         $html_content = $this->markdown->markdown_to_html( $content, $media_map );
         $html_content = wp_kses_post( $html_content );
+        $html_content = $this->blockify_html( $html_content );
 
         $postarr = array(
             'post_title'   => $title,
@@ -387,6 +388,112 @@ class WPEM_Importer {
             update_post_meta( $post_id, 'rank_math_focus_keyword', $keywords );
             update_post_meta( $post_id, 'rank_math_focus_keywords', $keywords );
         }
+    }
+
+    private function blockify_html( $html ) {
+        $html = trim( (string) $html );
+        if ( '' === $html ) {
+            return $html;
+        }
+
+        if ( ! class_exists( 'DOMDocument' ) ) {
+            return $html;
+        }
+
+        $doc = new DOMDocument();
+        $flags = 0;
+        if ( defined( 'LIBXML_HTML_NOIMPLIED' ) ) {
+            $flags |= LIBXML_HTML_NOIMPLIED;
+        }
+        if ( defined( 'LIBXML_HTML_NODEFDTD' ) ) {
+            $flags |= LIBXML_HTML_NODEFDTD;
+        }
+
+        $previous = libxml_use_internal_errors( true );
+        $loaded   = $doc->loadHTML( '<?xml encoding="utf-8" ?>' . $html, $flags );
+        libxml_clear_errors();
+        libxml_use_internal_errors( $previous );
+
+        if ( ! $loaded ) {
+            return $html;
+        }
+
+        $blocks = array();
+
+        foreach ( $doc->childNodes as $node ) {
+            $block = $this->blockify_node( $node, $doc );
+            if ( '' !== $block ) {
+                $blocks[] = $block;
+            }
+        }
+
+        return trim( implode( "\n", $blocks ) );
+    }
+
+    private function blockify_node( $node, $doc ) {
+        if ( XML_TEXT_NODE === $node->nodeType ) {
+            $text = trim( $node->textContent );
+            if ( '' === $text ) {
+                return '';
+            }
+            $html = '<p>' . esc_html( $text ) . '</p>';
+
+            return '<!-- wp:paragraph -->' . $html . '<!-- /wp:paragraph -->';
+        }
+
+        if ( XML_ELEMENT_NODE !== $node->nodeType ) {
+            return '';
+        }
+
+        $tag = strtolower( $node->nodeName );
+
+        if ( 'div' === $tag ) {
+            $blocks = array();
+            foreach ( $node->childNodes as $child ) {
+                $block = $this->blockify_node( $child, $doc );
+                if ( '' !== $block ) {
+                    $blocks[] = $block;
+                }
+            }
+
+            return implode( "\n", $blocks );
+        }
+
+        $html = $doc->saveHTML( $node );
+
+        if ( 'p' === $tag ) {
+            return '<!-- wp:paragraph -->' . $html . '<!-- /wp:paragraph -->';
+        }
+
+        if ( preg_match( '/^h[1-6]$/', $tag ) ) {
+            $level = (int) substr( $tag, 1 );
+
+            return '<!-- wp:heading {"level":' . $level . '} -->' . $html . '<!-- /wp:heading -->';
+        }
+
+        if ( 'ul' === $tag || 'ol' === $tag ) {
+            $ordered = ( 'ol' === $tag ) ? 'true' : 'false';
+
+            return '<!-- wp:list {"ordered":' . $ordered . '} -->' . $html . '<!-- /wp:list -->';
+        }
+
+        if ( 'blockquote' === $tag ) {
+            return '<!-- wp:quote -->' . $html . '<!-- /wp:quote -->';
+        }
+
+        if ( 'pre' === $tag ) {
+            return '<!-- wp:code -->' . $html . '<!-- /wp:code -->';
+        }
+
+        if ( 'table' === $tag ) {
+            return '<!-- wp:table -->' . $html . '<!-- /wp:table -->';
+        }
+
+        if ( 'hr' === $tag ) {
+            return '<!-- wp:separator -->' . $html . '<!-- /wp:separator -->';
+        }
+
+        return '<!-- wp:html -->' . $html . '<!-- /wp:html -->';
     }
 
     private function maybe_apply_page_template( $post_id, $meta ) {
