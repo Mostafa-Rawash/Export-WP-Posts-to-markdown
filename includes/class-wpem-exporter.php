@@ -29,7 +29,7 @@ class WPEM_Exporter {
         $query_args = array(
             'posts_per_page' => -1,
             'post_type'      => 'post',
-            'post_status'    => 'publish',
+            'post_status'    => 'any',
             'orderby'        => 'date',
             'order'          => 'DESC',
         );
@@ -88,12 +88,12 @@ class WPEM_Exporter {
         $posts = get_posts( $query_args );
 
         if ( empty( $posts ) ) {
-            $this->log_debug( 'No published posts returned by query.' );
-            $this->fail( esc_html__( 'No published posts found to export.', 'export-posts-to-markdown' ) );
+            $this->log_debug( 'No posts returned by query.' );
+            $this->fail( esc_html__( 'No posts found to export.', 'export-posts-to-markdown' ) );
         }
 
         $post_count = count( $posts );
-        $this->log_debug( sprintf( 'Found %d published posts to export.', $post_count ) );
+        $this->log_debug( sprintf( 'Found %d posts to export.', $post_count ) );
 
         $tmp_file = wp_tempnam( 'wpmd_' );
         if ( ! $tmp_file ) {
@@ -259,13 +259,12 @@ class WPEM_Exporter {
 
         $current_title = $post->post_title ? $post->post_title : $post->post_name;
         $base_name     = $this->normalize_filename_segment( $current_title, $post->ID );
-        $path_parts = $segments;
-        $path_parts[] = $base_name;
-
         $folder_path = get_post_meta( $post->ID, '_wpexportmd_folder_path', true );
         $folder_parts = $this->normalize_folder_path( $folder_path );
         if ( ! empty( $folder_parts ) ) {
-            $path_parts = array_merge( $folder_parts, $path_parts );
+            $path_parts = array_merge( $folder_parts, $segments, array( $base_name ) );
+        } else {
+            $path_parts = array( $base_name );
         }
 
         $filename  = implode( '/', $path_parts ) . '.md';

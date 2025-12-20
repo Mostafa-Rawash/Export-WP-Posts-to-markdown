@@ -83,6 +83,7 @@ Front matter is YAML between `---` lines at the top of the `.md` file.
   ![Alt text](_images/example.jpg "Caption")
   ```
 - Both `_images/...` and `/_images/...` paths are accepted for inline images and `featured_image`.
+- Obsidian-style image embeds like `![[image.png]]` are supported and are assumed to live under `_images/`.
 - Images are uploaded to the Media Library once and reused on subsequent imports. `_wpexportmd_source_path` meta tracks the source path.
 
 ## Notes & Limits

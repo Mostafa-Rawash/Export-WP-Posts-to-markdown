@@ -8,6 +8,14 @@ class WPEM_Markdown {
 
     public function html_to_markdown( $html ) {
         $html = preg_replace_callback(
+            '/<table[^>]*>.*?<\\/table>/is',
+            function ( $matches ) {
+                return $this->table_html_to_markdown( $matches[0] );
+            },
+            $html
+        );
+
+        $html = preg_replace_callback(
             '/<pre[^>]*><code[^>]*>(.*?)<\\/code><\\/pre>/is',
             function ( $matches ) {
                 $code = html_entity_decode( $matches[1], ENT_QUOTES, 'UTF-8' );
@@ -53,7 +61,14 @@ class WPEM_Markdown {
         $html = preg_replace_callback(
             '/<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\\/a>/is',
             function ( $matches ) {
-                return '[' . trim( $matches[2] ) . '](' . esc_url_raw( $matches[1] ) . ')';
+                $label = trim( $matches[2] );
+                $link  = '[' . $label . '](' . esc_url_raw( $matches[1] ) . ')';
+
+                if ( 0 === strpos( $label, '**' ) && substr( $label, -2 ) === '**' ) {
+                    return $link;
+                }
+
+                return '**' . $link . '**';
             },
             $html
         );
@@ -80,6 +95,7 @@ class WPEM_Markdown {
 
     public function markdown_to_html( $markdown, $media_map = array() ) {
         $markdown = str_replace( "\r\n", "\n", (string) $markdown );
+        $markdown = $this->convert_obsidian_images( $markdown );
 
         $lines     = explode( "\n", $markdown );
         $html      = '';
@@ -88,6 +104,7 @@ class WPEM_Markdown {
         $in_code   = false;
         $code_buf  = array();
         $paragraph = array();
+        $line_count = count( $lines );
 
         $flush_paragraph = function () use ( &$paragraph, &$html, $media_map ) {
             if ( empty( $paragraph ) ) {
@@ -114,7 +131,8 @@ class WPEM_Markdown {
             }
         };
 
-        foreach ( $lines as $line ) {
+        for ( $i = 0; $i < $line_count; $i++ ) {
+            $line    = $lines[ $i ];
             $trimmed = trim( $line );
 
             if ( $in_code ) {
@@ -134,6 +152,17 @@ class WPEM_Markdown {
                 $close_list();
                 $close_quote();
                 $in_code = true;
+                continue;
+            }
+
+            if ( $this->is_table_header( $trimmed, $lines, $i ) ) {
+                $flush_paragraph();
+                $close_list();
+                $close_quote();
+
+                $table = $this->build_table_html( $lines, $i, $media_map );
+                $html .= $table['html'];
+                $i     = $table['end'];
                 continue;
             }
 
@@ -199,6 +228,136 @@ class WPEM_Markdown {
         $close_quote();
 
         return $html;
+    }
+
+    private function convert_obsidian_images( $markdown ) {
+        return preg_replace_callback(
+            '/!\[\[([^\]]+)\]\]/',
+            function ( $matches ) {
+                $filename = trim( $matches[1] );
+                if ( '' === $filename ) {
+                    return $matches[0];
+                }
+
+                return '![](_images/' . $filename . ')';
+            },
+            $markdown
+        );
+    }
+
+    private function is_table_header( $line, $lines, $index ) {
+        if ( false === strpos( $line, '|' ) ) {
+            return false;
+        }
+
+        if ( ! isset( $lines[ $index + 1 ] ) ) {
+            return false;
+        }
+
+        $next = trim( $lines[ $index + 1 ] );
+
+        if ( '' === $next ) {
+            return false;
+        }
+
+        return (bool) preg_match( '/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/', $next );
+    }
+
+    private function build_table_html( $lines, $start_index, $media_map ) {
+        $header_line   = $lines[ $start_index ];
+        $separator_idx = $start_index + 1;
+        $rows          = array();
+        $end           = $separator_idx;
+
+        for ( $i = $separator_idx + 1; $i < count( $lines ); $i++ ) {
+            $row_line = trim( $lines[ $i ] );
+
+            if ( '' === $row_line || false === strpos( $row_line, '|' ) ) {
+                $end = $i - 1;
+                break;
+            }
+
+            $rows[] = $row_line;
+            $end    = $i;
+        }
+
+        $header_cells = $this->split_table_row( $header_line );
+        $thead_cells  = array();
+        foreach ( $header_cells as $cell ) {
+            $thead_cells[] = '<th>' . $this->apply_inline_markdown( $cell, $media_map ) . '</th>';
+        }
+
+        $body_rows = array();
+        foreach ( $rows as $row_line ) {
+            $cells = $this->split_table_row( $row_line );
+            $cells_html = array();
+            foreach ( $cells as $cell ) {
+                $cells_html[] = '<td>' . $this->apply_inline_markdown( $cell, $media_map ) . '</td>';
+            }
+            $body_rows[] = '<tr>' . implode( '', $cells_html ) . '</tr>';
+        }
+
+        $html  = '<table><thead><tr>' . implode( '', $thead_cells ) . '</tr></thead>';
+        $html .= '<tbody>' . implode( '', $body_rows ) . '</tbody></table>';
+
+        return array(
+            'html' => $html,
+            'end'  => $end,
+        );
+    }
+
+    private function split_table_row( $line ) {
+        $line = trim( $line );
+        $line = trim( $line, '|' );
+        $parts = array_map( 'trim', explode( '|', $line ) );
+
+        return $parts;
+    }
+
+    private function table_html_to_markdown( $table_html ) {
+        if ( ! preg_match_all( '/<tr[^>]*>(.*?)<\\/tr>/is', $table_html, $row_matches ) ) {
+            return '';
+        }
+
+        $rows = array();
+        foreach ( $row_matches[1] as $row_html ) {
+            if ( ! preg_match_all( '/<(th|td)[^>]*>(.*?)<\\/\\1>/is', $row_html, $cell_matches ) ) {
+                continue;
+            }
+
+            $cells = array();
+            foreach ( $cell_matches[2] as $cell_html ) {
+                $cell_text = wp_strip_all_tags( $cell_html );
+                $cell_text = html_entity_decode( $cell_text, ENT_QUOTES, 'UTF-8' );
+                $cell_text = trim( preg_replace( '/\s+/', ' ', $cell_text ) );
+                $cells[] = $cell_text;
+            }
+
+            if ( ! empty( $cells ) ) {
+                $rows[] = $cells;
+            }
+        }
+
+        if ( empty( $rows ) ) {
+            return '';
+        }
+
+        $header = array_shift( $rows );
+        $header_line = '| ' . implode( ' | ', $header ) . ' |';
+        $separator   = array();
+        foreach ( $header as $cell ) {
+            $separator[] = '---';
+        }
+        $separator_line = '| ' . implode( ' | ', $separator ) . ' |';
+
+        $body_lines = array();
+        foreach ( $rows as $row ) {
+            $body_lines[] = '| ' . implode( ' | ', $row ) . ' |';
+        }
+
+        $lines = array_merge( array( $header_line, $separator_line ), $body_lines );
+
+        return "\n" . implode( "\n", $lines ) . "\n\n";
     }
 
     public function parse_front_matter( $markdown ) {
