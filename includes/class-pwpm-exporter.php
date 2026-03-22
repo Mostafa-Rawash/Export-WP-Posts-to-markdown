@@ -248,15 +248,11 @@ class PWPM_Exporter {
     }
 
     private function should_preserve_html( $content ) {
-        $content_length = strlen( $content );
-
-        if ( $content_length === 0 ) {
+        if ( empty( $content ) ) {
             return false;
         }
 
-        $tag_count = preg_match_all( '/<[a-z][^>]*>/i', $content );
-
-        if ( $tag_count > 5 && ( $tag_count / $content_length ) > 0.15 ) {
+        if ( preg_match( '/<[a-z][^>]*>/i', $content ) ) {
             return true;
         }
 

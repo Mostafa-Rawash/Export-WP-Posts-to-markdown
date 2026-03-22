@@ -258,14 +258,7 @@ class PWPM_Importer {
             return false;
         }
 
-        if ( preg_match( '/^\s*<[a-z]/i', $content ) ) {
-            return true;
-        }
-
-        $tag_count = preg_match_all( '/<[^>]+>/', $content );
-        $text_length = strlen( strip_tags( $content ) );
-
-        if ( $text_length > 0 && ( $tag_count / $text_length ) > 0.3 ) {
+        if ( preg_match( '/<[a-z][^>]*>/i', $content ) ) {
             return true;
         }
 
