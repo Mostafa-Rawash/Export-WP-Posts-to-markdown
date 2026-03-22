@@ -4,11 +4,11 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class WPEM_Markdown {
+class PWPM_Markdown {
 
     public function html_to_markdown( $html ) {
         $html = preg_replace_callback(
-            '/<table[^>]*>.*?<\\/table>/is',
+            '/<table[^>]*>.*?<\/table>/is',
             function ( $matches ) {
                 return $this->table_html_to_markdown( $matches[0] );
             },
@@ -16,7 +16,7 @@ class WPEM_Markdown {
         );
 
         $html = preg_replace_callback(
-            '/<pre[^>]*><code[^>]*>(.*?)<\\/code><\\/pre>/is',
+            '/<pre[^>]*><code[^>]*>(.*?)<\/code><\/pre>/is',
             function ( $matches ) {
                 $code = html_entity_decode( $matches[1], ENT_QUOTES, 'UTF-8' );
                 $code = trim( $code, "\r\n" );
@@ -27,7 +27,7 @@ class WPEM_Markdown {
         );
 
         $html = preg_replace_callback(
-            '/<code[^>]*>(.*?)<\\/code>/is',
+            '/<code[^>]*>(.*?)<\/code>/is',
             function ( $matches ) {
                 $code = html_entity_decode( $matches[1], ENT_QUOTES, 'UTF-8' );
 
@@ -36,17 +36,17 @@ class WPEM_Markdown {
             $html
         );
 
-        $html = preg_replace( '/<h1[^>]*>(.*?)<\\/h1>/is', "# $1\n\n", $html );
-        $html = preg_replace( '/<h2[^>]*>(.*?)<\\/h2>/is', "## $1\n\n", $html );
-        $html = preg_replace( '/<h3[^>]*>(.*?)<\\/h3>/is', "### $1\n\n", $html );
-        $html = preg_replace( '/<h4[^>]*>(.*?)<\\/h4>/is', "#### $1\n\n", $html );
+        $html = preg_replace( '/<h1[^>]*>(.*?)<\/h1>/is', "# $1\n\n", $html );
+        $html = preg_replace( '/<h2[^>]*>(.*?)<\/h2>/is', "## $1\n\n", $html );
+        $html = preg_replace( '/<h3[^>]*>(.*?)<\/h3>/is', "### $1\n\n", $html );
+        $html = preg_replace( '/<h4[^>]*>(.*?)<\/h4>/is', "#### $1\n\n", $html );
 
-        $html = preg_replace( '/<blockquote[^>]*>(.*?)<\\/blockquote>/is', "> $1\n\n", $html );
+        $html = preg_replace( '/<blockquote[^>]*>(.*?)<\/blockquote>/is', "> $1\n\n", $html );
 
         $html = preg_replace( '/<(ul|ol)[^>]*>/', "\n", $html );
-        $html = preg_replace( '/<\\/(ul|ol)>/', "\n", $html );
+        $html = preg_replace( '/<\/(ul|ol)>/', "\n", $html );
         $html = preg_replace_callback(
-            '/<li[^>]*>(.*?)<\\/li>/is',
+            '/<li[^>]*>(.*?)<\/li>/is',
             function ( $matches ) {
                 $item = trim( wp_strip_all_tags( $matches[1] ) );
 
@@ -55,11 +55,11 @@ class WPEM_Markdown {
             $html
         );
 
-        $html = preg_replace( '/<(strong|b)>(.*?)<\\/\\1>/is', "**$2**", $html );
-        $html = preg_replace( '/<(em|i)>(.*?)<\\/\\1>/is', "*$2*", $html );
+        $html = preg_replace( '/<(strong|b)>(.*?)<\/\1>/is', "**$2**", $html );
+        $html = preg_replace( '/<(em|i)>(.*?)<\/\1>/is', "*$2*", $html );
 
         $html = preg_replace_callback(
-            '/<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\\/a>/is',
+            '/<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is',
             function ( $matches ) {
                 $label = trim( $matches[2] );
                 $link  = '[' . $label . '](' . esc_url_raw( $matches[1] ) . ')';
@@ -82,7 +82,7 @@ class WPEM_Markdown {
         );
 
         $html = preg_replace( '/<hr\s*\/?\>/i', "\n---\n", $html );
-        $html = preg_replace( '/<p[^>]*>(.*?)<\\/p>/is', "$1\n\n", $html );
+        $html = preg_replace( '/<p[^>]*>(.*?)<\/p>/is', "$1\n\n", $html );
         $html = preg_replace( '/<br\s*\/?\>/i', "  \n", $html );
 
         $text = wp_strip_all_tags( $html );
@@ -337,13 +337,13 @@ class WPEM_Markdown {
     }
 
     private function table_html_to_markdown( $table_html ) {
-        if ( ! preg_match_all( '/<tr[^>]*>(.*?)<\\/tr>/is', $table_html, $row_matches ) ) {
+        if ( ! preg_match_all( '/<tr[^>]*>(.*?)<\/tr>/is', $table_html, $row_matches ) ) {
             return '';
         }
 
         $rows = array();
         foreach ( $row_matches[1] as $row_html ) {
-            if ( ! preg_match_all( '/<(th|td)[^>]*>(.*?)<\\/\\1>/is', $row_html, $cell_matches ) ) {
+            if ( ! preg_match_all( '/<(th|td)[^>]*>(.*?)<\/\1>/is', $row_html, $cell_matches ) ) {
                 continue;
             }
 
@@ -512,7 +512,7 @@ class WPEM_Markdown {
                 $img .= ' />';
 
                 if ( '' !== $title ) {
-                    return '<figure class="wpem-image">' . $img . '<figcaption class="wpem-caption">' . esc_html( $title ) . '</figcaption></figure>';
+                    return '<figure class="pwpm-image">' . $img . '<figcaption class="pwpm-caption">' . esc_html( $title ) . '</figcaption></figure>';
                 }
 
                 return $img;

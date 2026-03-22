@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class WPEM_Exporter {
+class PWPM_Exporter {
 
     private $markdown;
     private $log;
@@ -23,7 +23,7 @@ class WPEM_Exporter {
     public function export_all( $filters = array(), $sync_overrides = array(), $stream_download = true ) {
         if ( ! class_exists( 'ZipArchive' ) ) {
             $this->log_debug( 'ZipArchive extension is missing.' );
-            $this->fail( esc_html__( 'The ZipArchive PHP extension is required to build the export archive.', 'export-posts-to-markdown' ) );
+            $this->fail( esc_html__( 'The ZipArchive PHP extension is required to build the export archive.', 'posts-markdown' ) );
         }
 
         $query_args = array(
@@ -63,11 +63,11 @@ class WPEM_Exporter {
             $query_args['meta_query'] = array(
                 'relation' => 'OR',
                 array(
-                    'key'     => '_wpexportmd_exported',
+                    'key'     => '_postsmd_exported',
                     'compare' => 'NOT EXISTS',
                 ),
                 array(
-                    'key'     => '_wpexportmd_exported',
+                    'key'     => '_postsmd_exported',
                     'value'   => 'yes',
                     'compare' => '!=',
                 ),
@@ -89,16 +89,16 @@ class WPEM_Exporter {
 
         if ( empty( $posts ) ) {
             $this->log_debug( 'No posts returned by query.' );
-            $this->fail( esc_html__( 'No posts found to export.', 'export-posts-to-markdown' ) );
+            $this->fail( esc_html__( 'No posts found to export.', 'posts-markdown' ) );
         }
 
         $post_count = count( $posts );
         $this->log_debug( sprintf( 'Found %d posts to export.', $post_count ) );
 
-        $tmp_file = wp_tempnam( 'wpmd_' );
+        $tmp_file = wp_tempnam( 'postsmd_' );
         if ( ! $tmp_file ) {
             $this->log_debug( 'Failed to create temporary file for archive.' );
-            $this->fail( esc_html__( 'Could not create a temporary file for the export.', 'export-posts-to-markdown' ) );
+            $this->fail( esc_html__( 'Could not create a temporary file for the export.', 'posts-markdown' ) );
         }
 
         $this->log_debug( 'Temporary file created at ' . $tmp_file . '.' );
@@ -108,7 +108,7 @@ class WPEM_Exporter {
 
         if ( true !== $zip->open( $tmp_file, $flags ) ) {
             $this->log_debug( 'ZipArchive::open failed for temporary file.' );
-            $this->fail( esc_html__( 'Could not create ZIP file.', 'export-posts-to-markdown' ) );
+            $this->fail( esc_html__( 'Could not create ZIP file.', 'posts-markdown' ) );
         }
 
         $this->log_debug( 'ZIP archive initialised.' );
@@ -121,8 +121,8 @@ class WPEM_Exporter {
             $filename = $this->generate_post_filename( $post, $used_filenames );
             $zip->addFromString( $filename, $markdown );
             $added_count++;
-            update_post_meta( $post->ID, '_wpexportmd_exported', 'yes' );
-            update_post_meta( $post->ID, '_wpexportmd_last_exported', gmdate( 'Y-m-d H:i:s' ) );
+            update_post_meta( $post->ID, '_postsmd_exported', 'yes' );
+            update_post_meta( $post->ID, '_postsmd_last_exported', gmdate( 'Y-m-d H:i:s' ) );
             $exported_files[] = array(
                 'name'    => $filename,
                 'content' => $markdown,
@@ -178,9 +178,15 @@ class WPEM_Exporter {
         $category_names = $categories ? wp_list_pluck( $categories, 'name' ) : array();
         $tag_names      = $tags ? wp_list_pluck( $tags, 'name' ) : array();
 
-        $content = $post->post_content;
-        $content = wpautop( $content );
-        $content = $this->markdown->html_to_markdown( $content );
+        $raw_content = $post->post_content;
+
+        if ( $this->should_preserve_html( $raw_content ) ) {
+            $content = wpautop( $raw_content );
+        } else {
+            $content = $raw_content;
+            $content = wpautop( $content );
+            $content = $this->markdown->html_to_markdown( $content );
+        }
 
         $md_lines   = array();
         $md_lines[] = '---';
@@ -216,7 +222,7 @@ class WPEM_Exporter {
             $md_lines[] = 'featured_image: ' . esc_url_raw( $thumbnail );
         }
 
-        $folder_path = get_post_meta( $post->ID, '_wpexportmd_folder_path', true );
+        $folder_path = get_post_meta( $post->ID, '_postsmd_folder_path', true );
         if ( $folder_path ) {
             $md_lines[] = 'folder_path: "' . $this->markdown->escape_yaml( $folder_path ) . '"';
         }
@@ -241,6 +247,22 @@ class WPEM_Exporter {
         return implode( "\n", $md_lines ) . "\n";
     }
 
+    private function should_preserve_html( $content ) {
+        $content_length = strlen( $content );
+
+        if ( $content_length === 0 ) {
+            return false;
+        }
+
+        $tag_count = preg_match_all( '/<[a-z][^>]*>/i', $content );
+
+        if ( $tag_count > 5 && ( $tag_count / $content_length ) > 0.15 ) {
+            return true;
+        }
+
+        return false;
+    }
+
     private function generate_post_filename( $post, &$used_filenames ) {
         $segments   = array();
         $ancestors  = array_reverse( get_post_ancestors( $post ) );
@@ -259,7 +281,7 @@ class WPEM_Exporter {
 
         $current_title = $post->post_title ? $post->post_title : $post->post_name;
         $base_name     = $this->normalize_filename_segment( $current_title, $post->ID );
-        $folder_path = get_post_meta( $post->ID, '_wpexportmd_folder_path', true );
+        $folder_path = get_post_meta( $post->ID, '_postsmd_folder_path', true );
         $folder_parts = $this->normalize_folder_path( $folder_path );
         if ( ! empty( $folder_parts ) ) {
             $path_parts = array_merge( $folder_parts, $segments, array( $base_name ) );

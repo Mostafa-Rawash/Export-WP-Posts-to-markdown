@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class WPEM_Media {
+class PWPM_Media {
 
     private $log;
 
@@ -77,7 +77,7 @@ class WPEM_Media {
             require_once ABSPATH . 'wp-admin/includes/image.php';
             $attach_data = wp_generate_attachment_metadata( $attachment_id, $upload['file'] );
             wp_update_attachment_metadata( $attachment_id, $attach_data );
-            update_post_meta( $attachment_id, '_wpexportmd_source_path', $normalized );
+            update_post_meta( $attachment_id, '_postsmd_source_path', $normalized );
 
             $attachment = array(
                 'id'  => $attachment_id,
@@ -152,7 +152,7 @@ class WPEM_Media {
                 'post_type'   => 'attachment',
                 'numberposts' => 1,
                 'fields'      => 'ids',
-                'meta_key'    => '_wpexportmd_source_path',
+                'meta_key'    => '_postsmd_source_path',
                 'meta_value'  => $normalized_path,
             )
         );

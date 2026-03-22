@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class WPEM_Sync {
+class PWPM_Sync {
 
     private $log;
     private $options;
@@ -56,7 +56,7 @@ class WPEM_Sync {
         $branch     = ! empty( $this->options['github_branch'] ) ? sanitize_text_field( $this->options['github_branch'] ) : 'main';
         $path       = ! empty( $this->options['github_path'] ) ? ltrim( trim( $this->options['github_path'] ), '/' ) . '/' : '';
         $folder     = trim( $folder, '/' );
-        $folder_dir = ''; // store files directly under path, no date-named folder
+        $folder_dir = '';
 
         list( $owner, $repo ) = array_pad( explode( '/', $repo_raw, 2 ), 2, '' );
         if ( '' === $owner || '' === $repo ) {
@@ -82,7 +82,7 @@ class WPEM_Sync {
                 array(
                     'headers' => array(
                         'Authorization' => 'token ' . $this->options['github_token'],
-                        'User-Agent'    => 'wp-export-markdown',
+                        'User-Agent'    => 'posts-markdown',
                     ),
                 )
             );
@@ -118,7 +118,7 @@ class WPEM_Sync {
                     'method'  => 'PUT',
                     'headers' => array(
                         'Authorization' => 'token ' . $this->options['github_token'],
-                        'User-Agent'    => 'wp-export-markdown',
+                        'User-Agent'    => 'posts-markdown',
                         'Content-Type'  => 'application/json',
                     ),
                     'body'    => wp_json_encode( $payload ),
@@ -158,7 +158,7 @@ class WPEM_Sync {
         }
 
         $parent        = ! empty( $this->options['drive_folder_id'] ) ? $this->options['drive_folder_id'] : '';
-        $target_parent = $parent; // do not create per-export folder
+        $target_parent = $parent;
 
         foreach ( $files as $file ) {
             if ( empty( $file['name'] ) || ! isset( $file['content'] ) ) {
@@ -205,7 +205,7 @@ class WPEM_Sync {
             array(
                 'headers' => array(
                     'Authorization' => 'token ' . $this->options['github_token'],
-                    'User-Agent'    => 'wp-export-markdown',
+                    'User-Agent'    => 'posts-markdown',
                 ),
             )
         );
@@ -241,7 +241,7 @@ class WPEM_Sync {
                 'method'  => 'PUT',
                 'headers' => array(
                     'Authorization' => 'token ' . $this->options['github_token'],
-                    'User-Agent'    => 'wp-export-markdown',
+                    'User-Agent'    => 'posts-markdown',
                     'Content-Type'  => 'application/json',
                 ),
                 'body'    => wp_json_encode( $payload ),
@@ -432,18 +432,18 @@ class WPEM_Sync {
         $path = ltrim( trim( (string) $path ), '/' );
 
         if ( '' === $path ) {
-            return new WP_Error( 'wpexportmd_github_path_empty', __( 'GitHub path is empty.', 'export-posts-to-markdown' ) );
+            return new WP_Error( 'postsmd_github_path_empty', __( 'GitHub path is empty.', 'posts-markdown' ) );
         }
 
         if ( empty( $this->options['github_repo'] ) || empty( $this->options['github_token'] ) ) {
-            return new WP_Error( 'wpexportmd_github_config_missing', __( 'GitHub settings are missing.', 'export-posts-to-markdown' ) );
+            return new WP_Error( 'postsmd_github_config_missing', __( 'GitHub settings are missing.', 'posts-markdown' ) );
         }
 
         $repo_raw = trim( $this->options['github_repo'] );
         list( $owner, $repo ) = array_pad( explode( '/', $repo_raw, 2 ), 2, '' );
 
         if ( '' === $owner || '' === $repo ) {
-            return new WP_Error( 'wpexportmd_github_repo_invalid', __( 'GitHub repo must be in owner/repo format.', 'export-posts-to-markdown' ) );
+            return new WP_Error( 'postsmd_github_repo_invalid', __( 'GitHub repo must be in owner/repo format.', 'posts-markdown' ) );
         }
 
         $branch = ! empty( $this->options['github_branch'] ) ? sanitize_text_field( $this->options['github_branch'] ) : 'main';
@@ -458,7 +458,7 @@ class WPEM_Sync {
             array(
                 'headers' => array(
                     'Authorization' => 'token ' . $this->options['github_token'],
-                    'User-Agent'    => 'wp-export-markdown',
+                    'User-Agent'    => 'posts-markdown',
                     'Accept'        => 'application/vnd.github.raw',
                 ),
                 'timeout' => 20,
@@ -471,17 +471,17 @@ class WPEM_Sync {
 
         $code = wp_remote_retrieve_response_code( $response );
         if ( 200 !== $code ) {
-            return new WP_Error( 'wpexportmd_github_http', 'GitHub HTTP ' . $code . ' for ' . $content_path );
+            return new WP_Error( 'postsmd_github_http', 'GitHub HTTP ' . $code . ' for ' . $content_path );
         }
 
         $body = wp_remote_retrieve_body( $response );
         if ( '' === $body ) {
-            return new WP_Error( 'wpexportmd_github_empty', __( 'Empty response from GitHub.', 'export-posts-to-markdown' ) );
+            return new WP_Error( 'postsmd_github_empty', __( 'Empty response from GitHub.', 'posts-markdown' ) );
         }
 
         $tmp = wp_tempnam( basename( $path ) );
         if ( ! $tmp ) {
-            return new WP_Error( 'wpexportmd_tmp_fail', __( 'Could not create temp file for GitHub download.', 'export-posts-to-markdown' ) );
+            return new WP_Error( 'postsmd_tmp_fail', __( 'Could not create temp file for GitHub download.', 'posts-markdown' ) );
         }
 
         file_put_contents( $tmp, $body );
@@ -496,13 +496,13 @@ class WPEM_Sync {
         $file_id = trim( (string) $file_id );
 
         if ( '' === $file_id ) {
-            return new WP_Error( 'wpexportmd_drive_id_empty', __( 'Drive file ID is empty.', 'export-posts-to-markdown' ) );
+            return new WP_Error( 'postsmd_drive_id_empty', __( 'Drive file ID is empty.', 'posts-markdown' ) );
         }
 
         $token = $this->get_drive_access_token();
 
         if ( '' === $token ) {
-            return new WP_Error( 'wpexportmd_drive_token_missing', __( 'Drive token is missing.', 'export-posts-to-markdown' ) );
+            return new WP_Error( 'postsmd_drive_token_missing', __( 'Drive token is missing.', 'posts-markdown' ) );
         }
 
         $url = 'https://www.googleapis.com/drive/v3/files/' . rawurlencode( $file_id ) . '?alt=media';
@@ -522,12 +522,12 @@ class WPEM_Sync {
 
         $code = wp_remote_retrieve_response_code( $response );
         if ( 200 !== $code ) {
-            return new WP_Error( 'wpexportmd_drive_http', 'Drive HTTP ' . $code . ' for file ' . $file_id );
+            return new WP_Error( 'postsmd_drive_http', 'Drive HTTP ' . $code . ' for file ' . $file_id );
         }
 
         $body = wp_remote_retrieve_body( $response );
         if ( '' === $body ) {
-            return new WP_Error( 'wpexportmd_drive_empty', __( 'Empty response from Drive.', 'export-posts-to-markdown' ) );
+            return new WP_Error( 'postsmd_drive_empty', __( 'Empty response from Drive.', 'posts-markdown' ) );
         }
 
         $headers = wp_remote_retrieve_headers( $response );
@@ -544,9 +544,9 @@ class WPEM_Sync {
             }
         }
 
-        $tmp = wp_tempnam( 'wpexportmd_drive_' );
+        $tmp = wp_tempnam( 'postsmd_drive_' );
         if ( ! $tmp ) {
-            return new WP_Error( 'wpexportmd_tmp_fail', __( 'Could not create temp file for Drive download.', 'export-posts-to-markdown' ) );
+            return new WP_Error( 'postsmd_tmp_fail', __( 'Could not create temp file for Drive download.', 'posts-markdown' ) );
         }
 
         file_put_contents( $tmp, $body );
@@ -596,7 +596,7 @@ class WPEM_Sync {
         }
 
         $this->options['drive_token'] = $data['access_token'];
-        update_option( 'wpexportmd_settings', $this->options );
+        update_option( 'postsmd_settings', $this->options );
 
         return $this->options['drive_token'];
     }

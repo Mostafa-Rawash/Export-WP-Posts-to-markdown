@@ -4,7 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class WPEM_Importer {
+class PWPM_Importer {
 
     private $markdown;
     private $media;
@@ -35,14 +35,14 @@ class WPEM_Importer {
         if ( 'zip' === $extension ) {
             if ( ! class_exists( 'ZipArchive' ) ) {
                 $this->log_debug( 'ZipArchive extension is missing for import.' );
-                $this->fail( esc_html__( 'The ZipArchive PHP extension is required to import from ZIP.', 'export-posts-to-markdown' ) );
+                $this->fail( esc_html__( 'The ZipArchive PHP extension is required to import from ZIP.', 'posts-markdown' ) );
             }
 
             $zip = new ZipArchive();
 
             if ( true !== $zip->open( $tmp_path ) ) {
                 $this->log_debug( 'ZipArchive::open failed for uploaded file.' );
-                $this->fail( esc_html__( 'Could not open the uploaded ZIP file.', 'export-posts-to-markdown' ) );
+                $this->fail( esc_html__( 'Could not open the uploaded ZIP file.', 'posts-markdown' ) );
             }
 
             $media_map = $this->media->prepare_zip_media_map( $zip );
@@ -60,7 +60,7 @@ class WPEM_Importer {
                 if ( '' !== $dir_name && '.' !== $dir_name ) {
                     $folders[ $dir_name ] = true;
                 }
-                if ( preg_match( '#/index\\.md$#i', $entry_name ) ) {
+                if ( preg_match( '#/index\.md$#i', $entry_name ) ) {
                     $indexed[ $dir_name ] = true;
                 }
 
@@ -85,7 +85,7 @@ class WPEM_Importer {
 
             if ( false === $markdown ) {
                 $this->log_debug( 'Failed to read uploaded Markdown file.' );
-                $this->fail( esc_html__( 'Could not read the uploaded Markdown file.', 'export-posts-to-markdown' ) );
+                $this->fail( esc_html__( 'Could not read the uploaded Markdown file.', 'posts-markdown' ) );
             }
 
             $result              = $this->import_markdown_post( $markdown, $name, array() );
@@ -93,7 +93,7 @@ class WPEM_Importer {
             $stats[ $result ]   += 1;
         } else {
             $this->log_debug( 'Unsupported file extension: ' . $extension );
-            $this->fail( esc_html__( 'Only ZIP archives or .md files are supported for import.', 'export-posts-to-markdown' ) );
+            $this->fail( esc_html__( 'Only ZIP archives or .md files are supported for import.', 'posts-markdown' ) );
         }
 
         if ( $this->sync ) {
@@ -110,7 +110,7 @@ class WPEM_Importer {
 
         foreach ( $folders as $folder => $true ) {
             if ( isset( $indexed[ $folder ] ) ) {
-                continue; // index.md already handled.
+                continue;
             }
 
             $slug  = sanitize_title( basename( $folder ) );
@@ -158,7 +158,7 @@ class WPEM_Importer {
         $original_id = $this->extract_post_id_from_meta( $meta );
         $post_id     = $original_id ? absint( $original_id ) : 0;
 
-        $title  = ! empty( $meta['title'] ) ? wp_strip_all_tags( $meta['title'] ) : __( 'Imported Markdown', 'export-posts-to-markdown' );
+        $title  = ! empty( $meta['title'] ) ? wp_strip_all_tags( $meta['title'] ) : __( 'Imported Markdown', 'posts-markdown' );
         $status = ! empty( $meta['post_status'] ) ? sanitize_key( $meta['post_status'] ) : ( ! empty( $meta['status'] ) ? sanitize_key( $meta['status'] ) : 'draft' );
         $slug   = ! empty( $meta['slug'] ) ? sanitize_title( $meta['slug'] ) : '';
         $date   = ! empty( $meta['post_date'] ) ? $meta['post_date'] : ( ! empty( $meta['date'] ) ? $meta['date'] : '' );
@@ -166,8 +166,13 @@ class WPEM_Importer {
         $author_id = $this->resolve_author_from_meta( isset( $meta['author'] ) ? $meta['author'] : '' );
         $excerpt   = isset( $meta['post_excerpt'] ) ? wp_strip_all_tags( $meta['post_excerpt'] ) : ( isset( $meta['excerpt'] ) ? wp_strip_all_tags( $meta['excerpt'] ) : '' );
 
-        $html_content = $this->markdown->markdown_to_html( $content, $media_map );
-        $html_content = wp_kses_post( $html_content );
+        if ( $this->is_html_content( $content ) ) {
+            $html_content = $content;
+        } else {
+            $html_content = $this->markdown->markdown_to_html( $content, $media_map );
+            $html_content = wp_kses_post( $html_content );
+        }
+
         $html_content = $this->blockify_html( $html_content );
 
         $postarr = array(
@@ -227,9 +232,9 @@ class WPEM_Importer {
             if ( ! is_wp_error( $inserted_id ) ) {
                 $this->log_debug( 'Created new post ID ' . $inserted_id . ' from ' . $filename . '.' );
                 $result_status = 'created';
-                if ( $original_id && ! get_post_meta( $inserted_id, '_wpexportmd_original_id', true ) ) {
+                if ( $original_id && ! get_post_meta( $inserted_id, '_postsmd_original_id', true ) ) {
                     $this->log_debug( 'Original ID ' . $original_id . ' stored in post meta because matching post was not found.' );
-                    update_post_meta( $inserted_id, '_wpexportmd_original_id', $original_id );
+                    update_post_meta( $inserted_id, '_postsmd_original_id', $original_id );
                 }
                 $this->assign_terms_from_meta( $inserted_id, $meta );
                 $this->apply_custom_fields( $inserted_id, $meta );
@@ -244,6 +249,27 @@ class WPEM_Importer {
         }
 
         return $result_status;
+    }
+
+    private function is_html_content( $content ) {
+        $content = trim( $content );
+
+        if ( empty( $content ) ) {
+            return false;
+        }
+
+        if ( preg_match( '/^\s*<[a-z]/i', $content ) ) {
+            return true;
+        }
+
+        $tag_count = preg_match_all( '/<[^>]+>/', $content );
+        $text_length = strlen( strip_tags( $content ) );
+
+        if ( $text_length > 0 && ( $tag_count / $text_length ) > 0.3 ) {
+            return true;
+        }
+
+        return false;
     }
 
     private function assign_terms_from_meta( $post_id, $meta ) {
@@ -348,7 +374,7 @@ class WPEM_Importer {
             return;
         }
 
-        update_post_meta( $post_id, '_wpexportmd_folder_path', $meta['folder_path'] );
+        update_post_meta( $post_id, '_postsmd_folder_path', $meta['folder_path'] );
     }
 
     private function apply_rank_math_meta( $post_id, $meta ) {
