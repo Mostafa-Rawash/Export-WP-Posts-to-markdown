@@ -6,6 +6,55 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class PWPM_Markdown {
 
+    public function strip_gutenberg_blocks( $content ) {
+        $content = preg_replace( '/<!--\s*wp:[a-zA-Z0-9_-]+(\s+[^>]*)?\s*-->/', '', $content );
+        $content = preg_replace( '/<!--\s*\/wp:[a-zA-Z0-9_-]+\s*-->/', '', $content );
+        $content = preg_replace( '/<!--\s*wp:[a-zA-Z0-9_-]+\s*\{\s*[^}]*\}\s*-->/', '', $content );
+        return $content;
+    }
+
+    public function unwrap_simple_p_tags( $content ) {
+        $lines = preg_split( '/(<[^>]+>)/', $content, -1, PREG_SPLIT_DELIM_CAPTURE );
+        $result = '';
+        $in_block = false;
+
+        foreach ( $lines as $part ) {
+            if ( preg_match( '/<(script|style|div|table|ul|ol|blockquote|pre|figure)(?:\s[^>]*)?>/i', $part ) ) {
+                $in_block = true;
+            }
+            if ( preg_match( '/<\/(script|style|div|table|ul|ol|blockquote|pre|figure)>/i', $part ) ) {
+                $in_block = false;
+            }
+
+            if ( $in_block ) {
+                $result .= $part;
+                continue;
+            }
+
+            if ( preg_match( '/^<p(?:\s[^>]*)?>((?:<[^>]+>)*)(.*?)(<\/p>)$/is', $part, $matches ) ) {
+                $inner = trim( $matches[2] );
+                if ( '' === $inner ) {
+                    continue;
+                }
+
+                if ( preg_match( '/^(#{1,6}\s+)/', $inner ) ||
+                     preg_match( '/^(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/', $inner ) ||
+                     preg_match( '/^([-*]\s+)/', $inner ) ||
+                     preg_match( '/^(\d+\.\s+)/', $inner ) ||
+                     preg_match( '/^(`{3})/', $inner ) ||
+                     preg_match( '/^>\s+/', $inner ) ) {
+                    $result .= $inner . "\n";
+                } else {
+                    $result .= $part;
+                }
+            } else {
+                $result .= $part;
+            }
+        }
+
+        return $result;
+    }
+
     public function html_to_markdown( $html ) {
         $html = preg_replace_callback(
             '/<table[^>]*>.*?<\/table>/is',
@@ -272,35 +321,64 @@ class PWPM_Markdown {
             return false;
         }
 
-        if ( ! isset( $lines[ $index + 1 ] ) ) {
-            return false;
-        }
-
-        $next = trim( $lines[ $index + 1 ] );
+        $next = isset( $lines[ $index + 1 ] ) ? trim( $lines[ $index + 1 ] ) : '';
 
         if ( '' === $next ) {
             return false;
         }
 
-        return (bool) preg_match( '/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/', $next );
+        if ( preg_match( '/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/', $next ) ) {
+            return true;
+        }
+
+        if ( false !== strpos( $next, '|' ) ) {
+            return true;
+        }
+
+        return false;
     }
 
     private function build_table_html( $lines, $start_index, $media_map ) {
-        $header_line   = $lines[ $start_index ];
-        $separator_idx = $start_index + 1;
+        $header_line = $lines[ $start_index ];
+        $next_line   = isset( $lines[ $start_index + 1 ] ) ? trim( $lines[ $start_index + 1 ] ) : '';
+        $has_separator = '' !== $next_line && (bool) preg_match( '/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/', $next_line );
+        $separator_idx = $has_separator ? $start_index + 1 : $start_index;
         $rows          = array();
         $end           = $separator_idx;
 
-        for ( $i = $separator_idx + 1; $i < count( $lines ); $i++ ) {
-            $row_line = trim( $lines[ $i ] );
+        if ( $has_separator ) {
+            for ( $i = $separator_idx + 1; $i < count( $lines ); $i++ ) {
+                $row_line = trim( $lines[ $i ] );
 
-            if ( '' === $row_line || false === strpos( $row_line, '|' ) ) {
-                $end = $i - 1;
-                break;
+                if ( '' === $row_line ) {
+                    $end = $i - 1;
+                    break;
+                }
+
+                if ( false === strpos( $row_line, '|' ) ) {
+                    $end = $i - 1;
+                    break;
+                }
+
+                $rows[] = $row_line;
+                $end    = $i;
             }
+        } else {
+            for ( $i = $start_index + 1; $i < count( $lines ); $i++ ) {
+                $row_line = trim( $lines[ $i ] );
 
-            $rows[] = $row_line;
-            $end    = $i;
+                if ( '' === $row_line ) {
+                    continue;
+                }
+
+                if ( false === strpos( $row_line, '|' ) ) {
+                    $end = $i - 1;
+                    break;
+                }
+
+                $rows[] = $row_line;
+                $end    = $i;
+            }
         }
 
         $header_cells = $this->split_table_row( $header_line );
@@ -497,50 +575,55 @@ class PWPM_Markdown {
 
     private function apply_inline_markdown( $text, $media_map = array() ) {
         $text = preg_replace_callback(
-            '/!\[([^\]]*)\]\(\s*("?)([^" \t\)]+)\2(?:\s+"([^"]*)")?\s*\)/',
+            '/(<[^>]+>)|(!\[([^\]]*)\]\(\s*("?)([^" \t\)]+)\4(?:\s+"([^"]*)")?\s*\))|(\[([^\]]+)\]\(([^)]+)\))|(`([^`]+)`)|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)/',
             function ( $matches ) use ( $media_map ) {
-                $alt     = esc_attr( $matches[1] );
-                $raw_src = isset( $matches[3] ) ? $matches[3] : '';
-                $raw_src = trim( $raw_src, "\"'" );
-                $src     = $this->resolve_media_src( $raw_src, $media_map );
-                $title   = isset( $matches[4] ) ? trim( $matches[4] ) : '';
-
-                $img = '<img src="' . esc_url( $src ) . '" alt="' . $alt . '" style="width: -webkit-fill-available; max-width: 100%; height: auto;"';
-                if ( '' !== $title ) {
-                    $img .= ' title="' . esc_attr( $title ) . '"';
-                }
-                $img .= ' />';
-
-                if ( '' !== $title ) {
-                    return '<figure class="pwpm-image">' . $img . '<figcaption class="pwpm-caption">' . esc_html( $title ) . '</figcaption></figure>';
+                if ( ! empty( $matches[1] ) ) {
+                    return $matches[1];
                 }
 
-                return $img;
+                if ( ! empty( $matches[2] ) ) {
+                    $alt     = esc_attr( $matches[3] );
+                    $raw_src = isset( $matches[5] ) ? $matches[5] : '';
+                    $raw_src = trim( $raw_src, "\"'" );
+                    $src     = $this->resolve_media_src( $raw_src, $media_map );
+                    $title   = isset( $matches[6] ) ? trim( $matches[6] ) : '';
+
+                    $img = '<img src="' . esc_url( $src ) . '" alt="' . $alt . '" style="width: -webkit-fill-available; max-width: 100%; height: auto;"';
+                    if ( '' !== $title ) {
+                        $img .= ' title="' . esc_attr( $title ) . '"';
+                    }
+                    $img .= ' />';
+
+                    if ( '' !== $title ) {
+                        return '<figure class="pwpm-image">' . $img . '<figcaption class="pwpm-caption">' . esc_html( $title ) . '</figcaption></figure>';
+                    }
+
+                    return $img;
+                }
+
+                if ( ! empty( $matches[7] ) ) {
+                    $label = $this->format_link_label( $matches[8] );
+                    $href  = esc_url( $matches[9] );
+
+                    return '<a href="' . $href . '">' . $label . '</a>';
+                }
+
+                if ( ! empty( $matches[10] ) ) {
+                    return '<code>' . esc_html( $matches[11] ) . '</code>';
+                }
+
+                if ( ! empty( $matches[12] ) ) {
+                    return '<strong>' . $matches[13] . '</strong>';
+                }
+
+                if ( ! empty( $matches[14] ) ) {
+                    return '<em>' . $matches[15] . '</em>';
+                }
+
+                return $matches[0];
             },
             $text
         );
-
-        $text = preg_replace_callback(
-            '/\[([^\]]+)\]\(([^)]+)\)/',
-            function ( $matches ) {
-                $label = $this->format_link_label( $matches[1] );
-                $href  = esc_url( $matches[2] );
-
-                return '<a href="' . $href . '">' . $label . '</a>';
-            },
-            $text
-        );
-
-        $text = preg_replace_callback(
-            '/`([^`]+)`/',
-            function ( $matches ) {
-                return '<code>' . esc_html( $matches[1] ) . '</code>';
-            },
-            $text
-        );
-
-        $text = preg_replace( '/\*\*(.+?)\*\*/s', '<strong>$1</strong>', $text );
-        $text = preg_replace( '/\*(.+?)\*/s', '<em>$1</em>', $text );
 
         return $text;
     }

@@ -323,7 +323,7 @@ class WP_Posts_Markdown {
                     <?php else : ?>
                         <span class="dashicons dashicons-dismiss" style="color: #646970;"></span>
                         <?php esc_html_e( 'GitHub: Not configured', 'posts-markdown' ); ?>
-                        - <a href="<?php echo esc_url( admin_url( 'tools.php?page=posts-markdown-integrations' ) ); ?>"><?php esc_html_e( 'Configure', 'posts-markdown' ); ?></a>
+                        - <a href="<?php echo esc_url( admin_url( 'admin.php?page=posts-markdown-integrations' ) ); ?>"><?php esc_html_e( 'Configure', 'posts-markdown' ); ?></a>
                     <?php endif; ?>
                 </p>
                 <p>
@@ -333,7 +333,7 @@ class WP_Posts_Markdown {
                     <?php else : ?>
                         <span class="dashicons dashicons-dismiss" style="color: #646970;"></span>
                         <?php esc_html_e( 'Google Drive: Not configured', 'posts-markdown' ); ?>
-                        - <a href="<?php echo esc_url( admin_url( 'tools.php?page=posts-markdown-integrations' ) ); ?>"><?php esc_html_e( 'Configure', 'posts-markdown' ); ?></a>
+                        - <a href="<?php echo esc_url( admin_url( 'admin.php?page=posts-markdown-integrations' ) ); ?>"><?php esc_html_e( 'Configure', 'posts-markdown' ); ?></a>
                     <?php endif; ?>
                 </p>
             </div>
@@ -348,6 +348,10 @@ class WP_Posts_Markdown {
                     <input type="hidden" name="postsmd_status" value="publish" />
                     <input type="hidden" name="postsmd_exclude_exported" value="1" />
                     <?php submit_button( __( 'Export All Published', 'posts-markdown' ), 'primary', '', false ); ?>
+                </form>
+                <form method="get" action="<?php echo esc_url( admin_url( 'admin.php' ) ); ?>" style="display: inline-block; margin-right: 10px;">
+                    <input type="hidden" name="page" value="posts-markdown-import" />
+                    <?php submit_button( __( 'Import Posts', 'posts-markdown' ), 'secondary', '', false ); ?>
                 </form>
                 <?php if ( $github_connected ) : ?>
                     <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display: inline-block; margin-right: 10px;">
@@ -490,8 +494,11 @@ class WP_Posts_Markdown {
             $sync_overrides['drive_enabled'] = true;
         }
 
+        $added_count = 0;
         $this->exporter->export_all( $filters, $sync_overrides );
         $this->persist_debug_log();
+        delete_transient( $this->stats_cache_key );
+        $this->log_activity( 'export', sprintf( 'Exported posts' ) );
 
         exit;
     }
@@ -550,8 +557,10 @@ class WP_Posts_Markdown {
         );
 
         $this->persist_debug_log();
+        delete_transient( $this->stats_cache_key );
+        $this->log_activity( 'import', sprintf( 'Imported: %d created, %d updated', $stats['created'], $stats['updated'] ) );
 
-        wp_safe_redirect( admin_url( 'tools.php?page=posts-markdown' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=posts-markdown' ) );
         exit;
     }
 
@@ -584,7 +593,7 @@ class WP_Posts_Markdown {
 
         update_option( 'postsmd_settings', $options );
 
-        wp_safe_redirect( admin_url( 'tools.php?page=posts-markdown' ) );
+        wp_safe_redirect( admin_url( 'admin.php?page=posts-markdown' ) );
         exit;
     }
 
@@ -798,6 +807,8 @@ class WP_Posts_Markdown {
 
         $this->exporter->export_all( $filters, $sync_overrides );
         $this->persist_debug_log();
+        delete_transient( $this->stats_cache_key );
+        $this->log_activity( 'export', 'Dashboard export' );
 
         exit;
     }
@@ -824,6 +835,8 @@ class WP_Posts_Markdown {
 
         $this->exporter->export_all( $filters, $sync_overrides );
         $this->persist_debug_log();
+        delete_transient( $this->stats_cache_key );
+        $this->log_activity( 'github', 'Export + GitHub sync' );
 
         exit;
     }
@@ -850,6 +863,8 @@ class WP_Posts_Markdown {
 
         $this->exporter->export_all( $filters, $sync_overrides );
         $this->persist_debug_log();
+        delete_transient( $this->stats_cache_key );
+        $this->log_activity( 'drive', 'Export + Drive sync' );
 
         exit;
     }

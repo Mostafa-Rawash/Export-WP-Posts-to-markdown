@@ -166,12 +166,8 @@ class PWPM_Importer {
         $author_id = $this->resolve_author_from_meta( isset( $meta['author'] ) ? $meta['author'] : '' );
         $excerpt   = isset( $meta['post_excerpt'] ) ? wp_strip_all_tags( $meta['post_excerpt'] ) : ( isset( $meta['excerpt'] ) ? wp_strip_all_tags( $meta['excerpt'] ) : '' );
 
-        if ( $this->is_html_content( $content ) ) {
-            $html_content = $content;
-        } else {
-            $html_content = $this->markdown->markdown_to_html( $content, $media_map );
-            $html_content = wp_kses_post( $html_content );
-        }
+        $html_content = $this->markdown->markdown_to_html( $content, $media_map );
+        $html_content = wp_kses_post( $html_content );
 
         $html_content = $this->blockify_html( $html_content );
 

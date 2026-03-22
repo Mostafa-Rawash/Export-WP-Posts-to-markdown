@@ -180,13 +180,10 @@ class PWPM_Exporter {
 
         $raw_content = $post->post_content;
 
-        if ( $this->should_preserve_html( $raw_content ) ) {
-            $content = wpautop( $raw_content );
-        } else {
-            $content = $raw_content;
-            $content = wpautop( $content );
-            $content = $this->markdown->html_to_markdown( $content );
-        }
+        $content = $this->markdown->strip_gutenberg_blocks( $raw_content );
+        $content = $this->markdown->unwrap_simple_p_tags( $content );
+        $content = wpautop( $content );
+        $content = $this->markdown->html_to_markdown( $content );
 
         $md_lines   = array();
         $md_lines[] = '---';
@@ -245,18 +242,6 @@ class PWPM_Exporter {
         $md_lines[] = $content;
 
         return implode( "\n", $md_lines ) . "\n";
-    }
-
-    private function should_preserve_html( $content ) {
-        if ( empty( $content ) ) {
-            return false;
-        }
-
-        if ( preg_match( '/<[a-z][^>]*>/i', $content ) ) {
-            return true;
-        }
-
-        return false;
     }
 
     private function generate_post_filename( $post, &$used_filenames ) {
