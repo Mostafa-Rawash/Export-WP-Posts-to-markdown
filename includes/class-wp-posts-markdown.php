@@ -14,6 +14,7 @@ class WP_Posts_Markdown {
 
     private $debug_log = array();
     private $debug_transient_key = 'postsmd_last_debug';
+    private $debug_log_option_key = 'postsmd_debug_log';
 
     private $exporter;
     private $importer;
@@ -52,6 +53,8 @@ class WP_Posts_Markdown {
         add_action( 'admin_post_postsmd_dashboard_export_github', array( $this, 'handle_dashboard_export_github' ) );
         add_action( 'admin_post_postsmd_dashboard_export_drive', array( $this, 'handle_dashboard_export_drive' ) );
         add_action( 'admin_notices', array( $this, 'render_debug_notices' ) );
+        add_action( 'wp_ajax_postsmd_get_post_content', array( $this, 'ajax_get_post_content' ) );
+        add_action( 'wp_ajax_postsmd_clear_debug_log', array( $this, 'ajax_clear_debug_log' ) );
     }
 
     public function add_page() {
@@ -249,11 +252,13 @@ class WP_Posts_Markdown {
     public function render_dashboard_page() {
         $stats        = $this->get_export_stats();
         $activity_log = $this->get_activity_log();
+        $debug_log    = $this->get_debug_log();
         $options      = get_option( 'postsmd_settings', array() );
         $options      = is_array( $options ) ? $options : array();
 
         $github_connected = ! empty( $options['github_enabled'] ) && ! empty( $options['github_repo'] ) && ! empty( $options['github_token'] );
         $drive_connected = ! empty( $options['drive_enabled'] ) && ! empty( $options['drive_token'] );
+        $nonce = wp_create_nonce( 'postsmd_debug' );
         ?>
         <div class="wrap postsmd-dashboard">
             <h1><?php esc_html_e( 'Posts Markdown - Dashboard', 'posts-markdown' ); ?></h1>
@@ -395,7 +400,128 @@ class WP_Posts_Markdown {
                     </tbody>
                 </table>
             <?php endif; ?>
+
+            <hr />
+
+            <h2><?php esc_html_e( 'Debug Tools', 'posts-markdown' ); ?></h2>
+            <div class="postsmd-debug-tools">
+                <p>
+                    <label for="postsmd-post-id"><?php esc_html_e( 'Inspect Post Content:', 'posts-markdown' ); ?></label>
+                    <input type="number" id="postsmd-post-id" placeholder="<?php esc_attr_e( 'Post ID', 'posts-markdown' ); ?>" style="width: 100px; margin: 0 5px;" />
+                    <button type="button" class="button" id="postsmd-view-content"><?php esc_html_e( 'View Content', 'posts-markdown' ); ?></button>
+                </p>
+                <div id="postsmd-post-content-result" style="display: none; margin-top: 10px;">
+                    <h4><?php esc_html_e( 'Post Content', 'posts-markdown' ); ?>: <span id="postsmd-post-title"></span> (ID: <span id="postsmd-post-id-display"></span>, Length: <span id="postsmd-post-length"></span> bytes)</h4>
+                    <pre id="postsmd-post-content" style="background: #f6f7f7; padding: 15px; overflow: auto; max-height: 400px; border: 1px solid #c3c4c7; font-size: 12px;"></pre>
+                </div>
+            </div>
+
+            <hr />
+
+            <h2><?php esc_html_e( 'Debug Log', 'posts-markdown' ); ?> 
+                <button type="button" class="button" id="postsmd-clear-debug-log"><?php esc_html_e( 'Clear Log', 'posts-markdown' ); ?></button>
+            </h2>
+            <?php if ( ! empty( $debug_log ) ) : ?>
+                <table class="wp-list-table widefat fixed striped postsmd-debug-log-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 100px;"><?php esc_html_e( 'Time', 'posts-markdown' ); ?></th>
+                            <th style="width: 80px;"><?php esc_html_e( 'Status', 'posts-markdown' ); ?></th>
+                            <th><?php esc_html_e( 'Message', 'posts-markdown' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $debug_log as $entry ) : 
+                            $time = '';
+                            $status = 'info';
+                            $message = '';
+
+                            if ( is_array( $entry ) ) {
+                                $time    = isset( $entry['time'] ) ? $entry['time'] : '';
+                                $status  = isset( $entry['status'] ) ? $entry['status'] : 'info';
+                                $message = isset( $entry['message'] ) ? $entry['message'] : '';
+                            } else {
+                                if ( preg_match( '/^\[([^\]]+)\]\s+(.+)$/', $entry, $matches ) ) {
+                                    $time = $matches[1];
+                                    $message = $matches[2];
+                                } else {
+                                    $message = $entry;
+                                }
+                            }
+
+                            $status_class = 'postsmd-status-' . esc_attr( $status );
+                            $status_label = $this->get_status_label( $status );
+                        ?>
+                            <tr>
+                                <td><?php echo esc_html( $time ); ?></td>
+                                <td><span class="<?php echo esc_attr( $status_class ); ?>"><?php echo esc_html( $status_label ); ?></span></td>
+                                <td><code><?php echo esc_html( $message ); ?></code></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else : ?>
+                <p class="description"><?php esc_html_e( 'No debug log entries yet. Export or import a post to see debug information.', 'posts-markdown' ); ?></p>
+            <?php endif; ?>
         </div>
+
+        <script>
+        jQuery(document).ready(function($) {
+            var nonce = '<?php echo esc_js( $nonce ); ?>';
+
+            $('#postsmd-view-content').on('click', function() {
+                var postId = $('#postsmd-post-id').val();
+                if (!postId) {
+                    alert('<?php echo esc_js( __( 'Please enter a Post ID', 'posts-markdown' ) ); ?>');
+                    return;
+                }
+
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'postsmd_get_post_content',
+                        nonce: nonce,
+                        post_id: postId
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $('#postsmd-post-title').text(response.data.title);
+                            $('#postsmd-post-id-display').text(response.data.id);
+                            $('#postsmd-post-length').text(response.data.length);
+                            $('#postsmd-post-content').text(response.data.content);
+                            $('#postsmd-post-content-result').show();
+                        } else {
+                            alert(response.data.message);
+                        }
+                    },
+                    error: function() {
+                        alert('<?php echo esc_js( __( 'Error fetching post content', 'posts-markdown' ) ); ?>');
+                    }
+                });
+            });
+
+            $('#postsmd-clear-debug-log').on('click', function() {
+                if (!confirm('<?php echo esc_js( __( 'Are you sure you want to clear the debug log?', 'posts-markdown' ) ); ?>')) {
+                    return;
+                }
+
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'postsmd_clear_debug_log',
+                        nonce: nonce
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            location.reload();
+                        }
+                    }
+                });
+            });
+        });
+        </script>
 
         <style>
             .postsmd-dashboard .postsmd-stats-grid {
@@ -496,6 +622,7 @@ class WP_Posts_Markdown {
 
         $added_count = 0;
         $this->exporter->export_all( $filters, $sync_overrides );
+        $this->log_success( 'Export completed successfully.' );
         $this->persist_debug_log();
         delete_transient( $this->stats_cache_key );
         $this->log_activity( 'export', sprintf( 'Exported posts' ) );
@@ -546,6 +673,7 @@ class WP_Posts_Markdown {
 
         $stats = $this->importer->import_file( $tmp_path, $name, $sync_overrides );
 
+        $status = ( $stats['created'] > 0 || $stats['updated'] > 0 ) ? 'success' : 'warning';
         $this->log_debug(
             sprintf(
                 'Import completed: processed=%d, updated=%d, created=%d, skipped=%d.',
@@ -553,7 +681,8 @@ class WP_Posts_Markdown {
                 $stats['updated'],
                 $stats['created'],
                 $stats['skipped']
-            )
+            ),
+            $status
         );
 
         $this->persist_debug_log();
@@ -625,11 +754,65 @@ class WP_Posts_Markdown {
 
         delete_transient( $this->debug_transient_key );
 
-        echo '<div class="notice notice-info"><p><strong>' . esc_html__( 'Posts Markdown debug log', 'posts-markdown' ) . '</strong></p><ul>';
-        foreach ( $messages as $message ) {
-            echo '<li>' . esc_html( $message ) . '</li>';
+        echo '<div class="notice notice-info is-dismissible">';
+        echo '<p><strong>' . esc_html__( 'Posts Markdown Debug Log', 'posts-markdown' ) . '</strong></p>';
+        echo '<table class="wp-list-table widefat fixed striped postsmd-debug-table" style="margin-top: 10px;">';
+        echo '<thead><tr>';
+        echo '<th scope="col" class="manage-column" style="width: 100px;">' . esc_html__( 'Time', 'posts-markdown' ) . '</th>';
+        echo '<th scope="col" class="manage-column" style="width: 100px;">' . esc_html__( 'Status', 'posts-markdown' ) . '</th>';
+        echo '<th scope="col" class="manage-column">' . esc_html__( 'Message', 'posts-markdown' ) . '</th>';
+        echo '</tr></thead>';
+        echo '<tbody>';
+
+        foreach ( $messages as $entry ) {
+            $time = '';
+            $status = 'info';
+            $message = '';
+
+            if ( is_array( $entry ) ) {
+                $time    = isset( $entry['time'] ) ? $entry['time'] : '';
+                $status  = isset( $entry['status'] ) ? $entry['status'] : 'info';
+                $message = isset( $entry['message'] ) ? $entry['message'] : '';
+            } else {
+                if ( preg_match( '/^\[([^\]]+)\]\s+(.+)$/', $entry, $matches ) ) {
+                    $time = $matches[1];
+                    $message = $matches[2];
+                } else {
+                    $message = $entry;
+                }
+            }
+
+            $status_class = 'postsmd-status-' . esc_attr( $status );
+            $status_label = $this->get_status_label( $status );
+
+            echo '<tr>';
+            echo '<td>' . esc_html( $time ) . '</td>';
+            echo '<td><span class="' . esc_attr( $status_class ) . '">' . esc_html( $status_label ) . '</span></td>';
+            echo '<td>' . esc_html( $message ) . '</td>';
+            echo '</tr>';
         }
-        echo '</ul></div>';
+
+        echo '</tbody></table>';
+        echo '<style>
+            .postsmd-debug-table { border-collapse: collapse; }
+            .postsmd-debug-table th { background: #f6f7f7; }
+            .postsmd-debug-table td { padding: 8px 10px; }
+            .postsmd-status-success { color: #00a32a; font-weight: 600; }
+            .postsmd-status-error { color: #d63638; font-weight: 600; }
+            .postsmd-status-warning { color: #dba617; font-weight: 600; }
+            .postsmd-status-info { color: #2271b1; font-weight: 600; }
+        </style>';
+        echo '</div>';
+    }
+
+    private function get_status_label( $status ) {
+        $labels = array(
+            'success' => __( 'Success', 'posts-markdown' ),
+            'error'   => __( 'Error', 'posts-markdown' ),
+            'warning' => __( 'Warning', 'posts-markdown' ),
+            'info'    => __( 'Info', 'posts-markdown' ),
+        );
+        return isset( $labels[ $status ] ) ? $labels[ $status ] : $status;
     }
 
     public function stream_file_to_browser( $path, $download_name ) {
@@ -666,13 +849,34 @@ class WP_Posts_Markdown {
         }
     }
 
-    public function log_debug( $message ) {
+    public function log_debug( $message, $status = 'info' ) {
         $message = wp_strip_all_tags( (string) $message );
         if ( '' === $message ) {
             return;
         }
 
-        $this->debug_log[] = '[' . gmdate( 'H:i:s' ) . ' UTC] ' . $message;
+        $valid_statuses = array( 'success', 'error', 'warning', 'info' );
+        if ( ! in_array( $status, $valid_statuses, true ) ) {
+            $status = 'info';
+        }
+
+        $this->debug_log[] = array(
+            'time'    => gmdate( 'H:i:s' ) . ' UTC',
+            'status'  => $status,
+            'message' => $message,
+        );
+    }
+
+    public function log_success( $message ) {
+        $this->log_debug( $message, 'success' );
+    }
+
+    public function log_error( $message ) {
+        $this->log_debug( $message, 'error' );
+    }
+
+    public function log_warning( $message ) {
+        $this->log_debug( $message, 'warning' );
     }
 
     private function persist_debug_log() {
@@ -681,10 +885,66 @@ class WP_Posts_Markdown {
         }
 
         set_transient( $this->debug_transient_key, $this->debug_log, 5 * MINUTE_IN_SECONDS );
+
+        $existing_log = get_option( $this->debug_log_option_key, array() );
+        if ( ! is_array( $existing_log ) ) {
+            $existing_log = array();
+        }
+        $merged = array_merge( $this->debug_log, $existing_log );
+        $merged = array_slice( $merged, 0, 100 );
+        update_option( $this->debug_log_option_key, $merged );
+    }
+
+    public function get_debug_log() {
+        $log = get_option( $this->debug_log_option_key, array() );
+        return is_array( $log ) ? $log : array();
+    }
+
+    public function ajax_get_post_content() {
+        check_ajax_referer( 'postsmd_debug', 'nonce' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( array( 'message' => 'Unauthorized' ) );
+        }
+
+        $post_id = isset( $_POST['post_id'] ) ? absint( $_POST['post_id'] ) : 0;
+
+        if ( ! $post_id ) {
+            wp_send_json_error( array( 'message' => 'Invalid post ID' ) );
+        }
+
+        $post = get_post( $post_id );
+
+        if ( ! $post ) {
+            wp_send_json_error( array( 'message' => 'Post not found' ) );
+        }
+
+        $content = $post->post_content;
+
+        wp_send_json_success( array(
+            'id'      => $post_id,
+            'title'   => $post->post_title,
+            'content' => $content,
+            'length'  => strlen( $content ),
+        ) );
+    }
+
+    public function ajax_clear_debug_log() {
+        check_ajax_referer( 'postsmd_debug', 'nonce' );
+
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( array( 'message' => 'Unauthorized' ) );
+        }
+
+        delete_option( $this->debug_log_option_key );
+        delete_transient( $this->debug_transient_key );
+        $this->debug_log = array();
+
+        wp_send_json_success( array( 'message' => 'Debug log cleared' ) );
     }
 
     public function fail_and_die( $message ) {
-        $this->log_debug( 'Failure: ' . wp_strip_all_tags( $message ) );
+        $this->log_error( 'Failure: ' . wp_strip_all_tags( $message ) );
         $this->persist_debug_log();
         wp_die( $message );
     }
@@ -806,6 +1066,7 @@ class WP_Posts_Markdown {
         $filters['exclude_exported'] = ! empty( $_POST['postsmd_exclude_exported'] );
 
         $this->exporter->export_all( $filters, $sync_overrides );
+        $this->log_success( 'Dashboard export completed.' );
         $this->persist_debug_log();
         delete_transient( $this->stats_cache_key );
         $this->log_activity( 'export', 'Dashboard export' );
@@ -834,6 +1095,7 @@ class WP_Posts_Markdown {
         $filters['exclude_exported'] = ! empty( $_POST['postsmd_exclude_exported'] );
 
         $this->exporter->export_all( $filters, $sync_overrides );
+        $this->log_success( 'Export + GitHub sync completed.' );
         $this->persist_debug_log();
         delete_transient( $this->stats_cache_key );
         $this->log_activity( 'github', 'Export + GitHub sync' );
@@ -862,6 +1124,7 @@ class WP_Posts_Markdown {
         $filters['exclude_exported'] = ! empty( $_POST['postsmd_exclude_exported'] );
 
         $this->exporter->export_all( $filters, $sync_overrides );
+        $this->log_success( 'Export + Drive sync completed.' );
         $this->persist_debug_log();
         delete_transient( $this->stats_cache_key );
         $this->log_activity( 'drive', 'Export + Drive sync' );

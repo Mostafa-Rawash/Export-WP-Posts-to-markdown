@@ -180,10 +180,44 @@ class PWPM_Exporter {
 
         $raw_content = $post->post_content;
 
-        $content = $this->markdown->strip_gutenberg_blocks( $raw_content );
+        $this->log_debug( '--- EXPORT START: Post ID ' . $post->ID . ' ---' );
+        $this->log_debug( 'Raw content length: ' . strlen( $raw_content ) . ' bytes' );
+
+        $extracted = $this->markdown->preserve_wp_html_blocks( $raw_content );
+        $content = $extracted['content'];
+        $html_blocks = $extracted['blocks'];
+
+        $this->log_debug( 'Preserved blocks count: ' . count( $html_blocks ) );
+        foreach ( $html_blocks as $placeholder => $block_content ) {
+            $this->log_debug( 'Block ' . $placeholder . ' length: ' . strlen( $block_content ) );
+            $this->log_debug( 'Block preview: ' . substr( $block_content, 0, 100 ) );
+        }
+        $this->log_debug( 'Content after preserve (first 300): ' . substr( $content, 0, 300 ) );
+
+        $content = $this->markdown->strip_gutenberg_blocks( $content );
+        $this->log_debug( 'After strip_gutenberg_blocks, length: ' . strlen( $content ) );
+        $this->log_debug( 'After strip (first 200): ' . substr( $content, 0, 200 ) );
+
         $content = $this->markdown->unwrap_simple_p_tags( $content );
-        $content = wpautop( $content );
+        $this->log_debug( 'After unwrap_simple_p_tags, length: ' . strlen( $content ) );
+
+        $content_before_md = $content;
         $content = $this->markdown->html_to_markdown( $content );
+        $this->log_debug( 'After html_to_markdown, length: ' . strlen( $content ) );
+        $this->log_debug( 'After md (first 300): ' . substr( $content, 0, 300 ) );
+
+        foreach ( $html_blocks as $placeholder => $block_content ) {
+            if ( false !== strpos( $content, $placeholder ) ) {
+                $this->log_debug( 'Placeholder FOUND in content: ' . $placeholder );
+            } else {
+                $this->log_debug( 'Placeholder MISSING in content: ' . $placeholder );
+            }
+        }
+
+        $content = $this->markdown->restore_wp_html_blocks( $content, $html_blocks );
+        $this->log_debug( 'After restore_wp_html_blocks, length: ' . strlen( $content ) );
+        $this->log_debug( 'Final content (first 500): ' . substr( $content, 0, 500 ) );
+        $this->log_debug( '--- EXPORT END ---' );
 
         $md_lines   = array();
         $md_lines[] = '---';

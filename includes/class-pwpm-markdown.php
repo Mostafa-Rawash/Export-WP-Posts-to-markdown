@@ -55,6 +55,409 @@ class PWPM_Markdown {
         return $result;
     }
 
+    public function markdown_to_wp_blocks( $content, $media_map = array() ) {
+        $lines = explode( "\n", $content );
+        $result = '';
+        $in_html_block = false;
+        $html_buffer = '';
+        $html_nesting = 0;
+        $html_block_tags = array( 'div', 'table', 'pre', 'blockquote', 'ul', 'ol', 'script', 'style', 'figure', 'header', 'footer', 'nav', 'article', 'section', 'aside', 'main', 'form' );
+        $list_items = array();
+        $in_list = false;
+        $table_rows = array();
+        $in_table = false;
+        $is_table_header = false;
+        $in_code = false;
+        $code_buffer = '';
+        $code_lang = '';
+
+        foreach ( $lines as $line ) {
+            $trimmed = trim( $line );
+
+            if ( $in_code ) {
+                if ( preg_match( '/^```$/', $trimmed ) || preg_match( '/^```\s*$/', $trimmed ) ) {
+                    $code_content = rtrim( $code_buffer );
+                    $result .= "<!-- wp:code -->\n";
+                    $result .= '<pre class="wp-block-code"><code';
+                    if ( '' !== $code_lang ) {
+                        $result .= ' class="language-' . esc_attr( $code_lang ) . '"';
+                    }
+                    $result .= '>' . esc_html( $code_content ) . '</code></pre>';
+                    $result .= "\n<!-- /wp:code -->\n";
+                    $in_code = false;
+                    $code_buffer = '';
+                    $code_lang = '';
+                } else {
+                    $code_buffer .= $line . "\n";
+                }
+                continue;
+            }
+
+            if ( preg_match( '/^```(\w*)$/', $trimmed, $matches ) ) {
+                if ( $in_list ) {
+                    $result .= $this->finish_list_block( $list_items );
+                    $list_items = array();
+                    $in_list = false;
+                }
+                if ( $in_table ) {
+                    $result .= $this->convert_table_to_html( $table_rows, $is_table_header );
+                    $table_rows = array();
+                    $in_table = false;
+                    $is_table_header = false;
+                }
+                $in_code = true;
+                $code_lang = isset( $matches[1] ) ? $matches[1] : '';
+                $code_buffer = '';
+                continue;
+            }
+
+            $open_pattern = '/^<(' . implode( '|', $html_block_tags ) . ')(?:\s[^>]*)?>/is';
+
+            if ( ! $in_html_block && preg_match( $open_pattern, $trimmed ) ) {
+                if ( $in_list ) {
+                    $result .= $this->finish_list_block( $list_items );
+                    $list_items = array();
+                    $in_list = false;
+                }
+                if ( $in_table ) {
+                    $result .= $this->convert_table_to_html( $table_rows, $is_table_header );
+                    $table_rows = array();
+                    $in_table = false;
+                    $is_table_header = false;
+                }
+                $in_html_block = true;
+                $html_buffer = $line . "\n";
+
+                $open_count = preg_match_all( '/<(' . implode( '|', $html_block_tags ) . ')(?:\s[^>]*)?>/i', $line );
+                $close_count = preg_match_all( '/<\/(' . implode( '|', $html_block_tags ) . ')\s*>/i', $line );
+                $html_nesting = $open_count - $close_count;
+
+                if ( $html_nesting <= 0 ) {
+                    $result .= "<!-- wp:html -->\n" . $html_buffer . "<!-- /wp:html -->\n";
+                    $html_buffer = '';
+                    $in_html_block = false;
+                    $html_nesting = 0;
+                }
+                continue;
+            }
+
+            if ( $in_html_block ) {
+                $html_buffer .= $line . "\n";
+
+                $open_count = preg_match_all( '/<(' . implode( '|', $html_block_tags ) . ')(?:\s[^>]*)?>/i', $line );
+                $close_count = preg_match_all( '/<\/(' . implode( '|', $html_block_tags ) . ')\s*>/i', $line );
+                $html_nesting = $html_nesting + $open_count - $close_count;
+
+                if ( $html_nesting <= 0 ) {
+                    $result .= "<!-- wp:html -->\n" . $html_buffer . "<!-- /wp:html -->\n";
+                    $html_buffer = '';
+                    $in_html_block = false;
+                    $html_nesting = 0;
+                }
+                continue;
+            }
+
+            if ( '' === $trimmed ) {
+                if ( $in_list ) {
+                    $result .= $this->finish_list_block( $list_items );
+                    $list_items = array();
+                    $in_list = false;
+                }
+                if ( $in_table ) {
+                    $result .= $this->convert_table_to_html( $table_rows, $is_table_header );
+                    $table_rows = array();
+                    $in_table = false;
+                    $is_table_header = false;
+                }
+                continue;
+            }
+
+            if ( preg_match( '/^(#{1,6})\s+(.*)$/', $trimmed, $matches ) ) {
+                if ( $in_list ) {
+                    $result .= $this->finish_list_block( $list_items );
+                    $list_items = array();
+                    $in_list = false;
+                }
+                if ( $in_table ) {
+                    $result .= $this->convert_table_to_html( $table_rows, $is_table_header );
+                    $table_rows = array();
+                    $in_table = false;
+                    $is_table_header = false;
+                }
+                $level = strlen( $matches[1] );
+                $text = $this->apply_inline_markdown( $matches[2], $media_map );
+                $result .= "<!-- wp:heading -->\n<h{$level}>{$text}</h{$level}>\n<!-- /wp:heading -->\n";
+                continue;
+            }
+
+            if ( preg_match( '/^[-*]\s+(.*)$/', $trimmed, $matches ) ) {
+                if ( $in_table ) {
+                    $result .= $this->convert_table_to_html( $table_rows, $is_table_header );
+                    $table_rows = array();
+                    $in_table = false;
+                    $is_table_header = false;
+                }
+                $in_list = true;
+                $list_items[] = array( 'type' => 'ul', 'text' => $matches[1] );
+                continue;
+            }
+
+            if ( preg_match( '/^\d+\.\s+(.*)$/', $trimmed, $matches ) ) {
+                if ( $in_table ) {
+                    $result .= $this->convert_table_to_html( $table_rows, $is_table_header );
+                    $table_rows = array();
+                    $in_table = false;
+                    $is_table_header = false;
+                }
+                $in_list = true;
+                $list_items[] = array( 'type' => 'ol', 'text' => $matches[1] );
+                continue;
+            }
+
+            if ( preg_match( '/^>\s+(.*)$/', $trimmed, $matches ) ) {
+                if ( $in_list ) {
+                    $result .= $this->finish_list_block( $list_items );
+                    $list_items = array();
+                    $in_list = false;
+                }
+                if ( $in_table ) {
+                    $result .= $this->convert_table_to_html( $table_rows, $is_table_header );
+                    $table_rows = array();
+                    $in_table = false;
+                    $is_table_header = false;
+                }
+                $text = $this->apply_inline_markdown( $matches[1], $media_map );
+                $result .= "<!-- wp:quote -->\n<blockquote><p>{$text}</p></blockquote>\n<!-- /wp:quote -->\n";
+                continue;
+            }
+
+            if ( preg_match( '/^```(\w*)$/', $trimmed, $matches ) ) {
+                if ( $in_list ) {
+                    $result .= $this->finish_list_block( $list_items );
+                    $list_items = array();
+                    $in_list = false;
+                }
+                if ( $in_table ) {
+                    $result .= $this->convert_table_to_html( $table_rows, $is_table_header );
+                    $table_rows = array();
+                    $in_table = false;
+                    $is_table_header = false;
+                }
+                continue;
+            }
+
+            if ( preg_match( '/^\|.*\|$/', $trimmed ) ) {
+                if ( $in_list ) {
+                    $result .= $this->finish_list_block( $list_items );
+                    $list_items = array();
+                    $in_list = false;
+                }
+                $in_table = true;
+                if ( preg_match( '/^\|\s*[-:]+\s*(\|\s*[-:]+\s*)*\|$/', $trimmed ) ) {
+                    $is_table_header = true;
+                } else {
+                    $table_rows[] = $trimmed;
+                }
+                continue;
+            }
+
+            if ( $in_table ) {
+                $result .= $this->convert_table_to_html( $table_rows, $is_table_header );
+                $table_rows = array();
+                $in_table = false;
+                $is_table_header = false;
+            }
+
+            if ( $in_list ) {
+                $result .= $this->finish_list_block( $list_items );
+                $list_items = array();
+                $in_list = false;
+            }
+
+            $text = $this->apply_inline_markdown( $line, $media_map );
+            $result .= "<!-- wp:paragraph -->\n<p>{$text}</p>\n<!-- /wp:paragraph -->\n";
+        }
+
+        if ( $in_list ) {
+            $result .= $this->finish_list_block( $list_items );
+        }
+
+        if ( $in_table ) {
+            $result .= $this->convert_table_to_html( $table_rows, $is_table_header );
+        }
+
+        if ( $in_code && '' !== $code_buffer ) {
+            $code_content = rtrim( $code_buffer );
+            $result .= "<!-- wp:code -->\n";
+            $result .= '<pre class="wp-block-code"><code';
+            if ( '' !== $code_lang ) {
+                $result .= ' class="language-' . esc_attr( $code_lang ) . '"';
+            }
+            $result .= '>' . esc_html( $code_content ) . '</code></pre>';
+            $result .= "\n<!-- /wp:code -->\n";
+        }
+
+        if ( $in_html_block && '' !== $html_buffer ) {
+            $result .= "<!-- wp:html -->\n" . $html_buffer . "<!-- /wp:html -->\n";
+        }
+
+        return $result;
+    }
+
+    private function convert_table_to_html( $rows, $is_header ) {
+        if ( empty( $rows ) ) {
+            return '';
+        }
+
+        $html = "<!-- wp:table -->\n<table>\n";
+
+        if ( $is_header && isset( $rows[0] ) ) {
+            $html .= "<thead>\n<tr>\n";
+            $cells = $this->parse_table_row( $rows[0] );
+            foreach ( $cells as $cell ) {
+                $cell = $this->apply_inline_markdown( trim( $cell ) );
+                $html .= '<th>' . $cell . '</th>' . "\n";
+            }
+            $html .= "</tr>\n</thead>\n";
+            array_shift( $rows );
+        }
+
+        $html .= "<tbody>\n";
+        foreach ( $rows as $row ) {
+            $html .= "<tr>\n";
+            $cells = $this->parse_table_row( $row );
+            foreach ( $cells as $cell ) {
+                $cell = $this->apply_inline_markdown( trim( $cell ) );
+                $html .= '<td>' . $cell . '</td>' . "\n";
+            }
+            $html .= "</tr>\n";
+        }
+        $html .= "</tbody>\n</table>\n<!-- /wp:table -->\n";
+
+        return $html;
+    }
+
+    private function parse_table_row( $row ) {
+        $row = trim( $row );
+        $row = trim( $row, '|' );
+        $cells = explode( '|', $row );
+        return array_map( 'trim', $cells );
+    }
+
+    private function finish_list_block( $list_items ) {
+        if ( empty( $list_items ) ) {
+            return '';
+        }
+
+        $first_type = $list_items[0]['type'];
+        $is_ordered = ( 'ol' === $first_type );
+        $tag = $is_ordered ? 'ol' : 'ul';
+        $ordered_attr = $is_ordered ? ' {"ordered":true}' : '';
+        $items = '';
+
+        foreach ( $list_items as $item ) {
+            $text = $this->apply_inline_markdown( $item['text'] );
+            $items .= "<!-- wp:list-item -->\n";
+            $items .= '<li>' . $text . '</li>' . "\n";
+            $items .= "<!-- /wp:list-item -->\n";
+        }
+
+        return "<!-- wp:list{$ordered_attr} -->\n<{$tag} class=\"wp-block-list\">\n{$items}</{$tag}>\n<!-- /wp:list -->\n";
+    }
+
+    public function mixed_content_to_html( $content, $media_map = array() ) {
+        $html_tags = 'div|table|ul|ol|pre|blockquote|script|style|figure|header|footer|nav|article|section|aside|main|form|hr';
+
+        $pattern = '/(<(' . $html_tags . ')(?:\s[^>]*)?>(?:.*?)<\/\2>|<' . $html_tags . '(?:\s[^>]*)?\/?>)/is';
+        $parts = preg_split( $pattern, $content, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY );
+
+        $result = '';
+
+        foreach ( $parts as $part ) {
+            $trimmed = trim( $part );
+
+            if ( '' === $trimmed ) {
+                continue;
+            }
+
+            if ( preg_match( '/^<(' . $html_tags . ')(?:\s[^>]*)?>/is', $trimmed ) ||
+                 preg_match( '/^<\/(div|table|ul|ol|pre|blockquote|script|style|figure|header|footer|nav|article|section|aside|main)>/is', $trimmed ) ||
+                 preg_match( '/^<(' . $html_tags . ')(?:\s[^>]*)?\/?>$/is', $trimmed ) ) {
+                $result .= "\n" . $part . "\n";
+                continue;
+            }
+
+            if ( preg_match( '/<(' . $html_tags . ')(?:\s[^>]*)?>(?:.|\n)*?<\/\1>/is', $part ) ) {
+                $result .= "\n" . $part . "\n";
+                continue;
+            }
+
+            $converted = $this->convert_single_line_markdown( $part, $media_map );
+            $result .= '<p>' . $converted . '</p>' . "\n";
+        }
+
+        return $result;
+    }
+
+    private function convert_single_line_markdown( $text, $media_map = array() ) {
+        $text = $this->apply_inline_markdown( $text, $media_map );
+        $text = preg_replace( '/<br\s*\/?>\s*$/i', '', $text );
+        return $text;
+    }
+
+    public function preserve_wp_html_blocks( $content ) {
+        $html_blocks = array();
+        $index = 0;
+
+        $content = preg_replace_callback(
+            '/<!--\s*wp:html\s*-->(.*?)<!--\s*\/wp:html\s*-->/is',
+            function ( $matches ) use ( &$html_blocks, &$index ) {
+                $placeholder = '[[PWPM_HTML_' . $index . ']]';
+                $html_blocks[ $placeholder ] = trim( $matches[1] );
+                $index++;
+                return $placeholder;
+            },
+            $content
+        );
+
+        $content = preg_replace_callback(
+            '/<!--\s*wp:code\s*-->.*?<pre[^>]*><code[^>]*?(?:class="language-([^"]+)")?[^>]*>(.*?)<\/code><\/pre>.*?<!--\s*\/wp:code\s*-->/is',
+            function ( $matches ) use ( &$html_blocks, &$index ) {
+                $placeholder = '[[PWPM_CODE_' . $index . ']]';
+                $lang = ! empty( $matches[1] ) ? $matches[1] : '';
+                $code = isset( $matches[2] ) ? $matches[2] : '';
+                $code = html_entity_decode( $code, ENT_QUOTES, 'UTF-8' );
+                $html_blocks[ $placeholder ] = "\n```" . $lang . "\n" . trim( $code, "\r\n" ) . "\n```\n";
+                $index++;
+                return $placeholder;
+            },
+            $content
+        );
+
+        $content = preg_replace_callback(
+            '/<!--\s*wp:freeform\s*-->(.*?)<!--\s*\/wp:freeform\s*-->/is',
+            function ( $matches ) use ( &$html_blocks, &$index ) {
+                $placeholder = '[[PWPM_FREEFORM_' . $index . ']]';
+                $html_blocks[ $placeholder ] = trim( $matches[1] );
+                $index++;
+                return $placeholder;
+            },
+            $content
+        );
+
+        return array(
+            'content' => $content,
+            'blocks'  => $html_blocks
+        );
+    }
+
+    public function restore_wp_html_blocks( $content, $blocks ) {
+        foreach ( $blocks as $placeholder => $html ) {
+            $content = str_replace( $placeholder, $html, $content );
+        }
+        return $content;
+    }
+
     public function html_to_markdown( $html ) {
         $html = preg_replace_callback(
             '/<table[^>]*>.*?<\/table>/is',
@@ -65,12 +468,13 @@ class PWPM_Markdown {
         );
 
         $html = preg_replace_callback(
-            '/<pre[^>]*><code[^>]*>(.*?)<\/code><\/pre>/is',
+            '/<pre[^>]*><code[^>]*?(?:class="language-([^"]+)")?[^>]*>(.*?)<\/code><\/pre>/is',
             function ( $matches ) {
-                $code = html_entity_decode( $matches[1], ENT_QUOTES, 'UTF-8' );
+                $lang = ! empty( $matches[1] ) ? $matches[1] : '';
+                $code = html_entity_decode( $matches[2], ENT_QUOTES, 'UTF-8' );
                 $code = trim( $code, "\r\n" );
 
-                return "\n```\n" . $code . "\n```\n\n";
+                return "\n```" . $lang . "\n" . $code . "\n```\n\n";
             },
             $html
         );
@@ -92,14 +496,40 @@ class PWPM_Markdown {
 
         $html = preg_replace( '/<blockquote[^>]*>(.*?)<\/blockquote>/is', "> $1\n\n", $html );
 
-        $html = preg_replace( '/<(ul|ol)[^>]*>/', "\n", $html );
-        $html = preg_replace( '/<\/(ul|ol)>/', "\n", $html );
         $html = preg_replace_callback(
-            '/<li[^>]*>(.*?)<\/li>/is',
+            '/<(ul|ol)[^>]*>(.*?)<\/\1>/is',
             function ( $matches ) {
-                $item = trim( wp_strip_all_tags( $matches[1] ) );
+                $is_ordered = ( 'ol' === strtolower( $matches[1] ) );
+                $content = $matches[2];
+                $items = array();
 
-                return '- ' . $item . "\n";
+                if ( preg_match_all( '/<li[^>]*>(.*?)<\/li>/is', $content, $li_matches ) ) {
+                    foreach ( $li_matches[1] as $li_content ) {
+                        $items[] = $li_content;
+                    }
+                }
+
+                if ( empty( $items ) ) {
+                    return '';
+                }
+
+                $result = "\n";
+                $counter = 1;
+
+                foreach ( $items as $item ) {
+                    $item = $this->convert_inline_html_to_markdown( $item );
+                    $item = trim( wp_strip_all_tags( $item ) );
+                    $item = html_entity_decode( $item, ENT_QUOTES, 'UTF-8' );
+
+                    if ( $is_ordered ) {
+                        $result .= $counter . '. ' . $item . "\n";
+                        $counter++;
+                    } else {
+                        $result .= '- ' . $item . "\n";
+                    }
+                }
+
+                return $result . "\n";
             },
             $html
         );
@@ -123,9 +553,27 @@ class PWPM_Markdown {
         );
 
         $html = preg_replace_callback(
-            '/<img[^>]*src=["\']([^"\']+)["\'][^>]*alt=["\']([^"\']*)["\'][^>]*>/is',
+            '/<img[^>]*(?:src=["\']([^"\']+)["\']|alt=["\']([^"\']*)["\']|title=["\']([^"\']*)["\'])+[^>]*>/is',
             function ( $matches ) {
-                return '![' . trim( $matches[2] ) . '](' . esc_url_raw( $matches[1] ) . ')';
+                $full = $matches[0];
+                $src = '';
+                $alt = '';
+                $title = '';
+
+                if ( preg_match( '/src=["\']([^"\']+)["\']/', $full, $m ) ) {
+                    $src = esc_url_raw( $m[1] );
+                }
+                if ( preg_match( '/alt=["\']([^"\']*)["\']/', $full, $m ) ) {
+                    $alt = trim( $m[1] );
+                }
+                if ( preg_match( '/title=["\']([^"\']*)["\']/', $full, $m ) ) {
+                    $title = trim( $m[1] );
+                }
+
+                if ( '' !== $title ) {
+                    return '![' . $alt . '](' . $src . ' "' . $title . '")';
+                }
+                return '![' . $alt . '](' . $src . ')';
             },
             $html
         );
@@ -140,6 +588,27 @@ class PWPM_Markdown {
         $text = preg_replace( "/\n{3,}/", "\n\n", $text );
 
         return trim( $text );
+    }
+
+    private function convert_inline_html_to_markdown( $html ) {
+        $html = preg_replace( '/<(strong|b)>(.*?)<\/\1>/is', "**$2**", $html );
+        $html = preg_replace( '/<(em|i)>(.*?)<\/\1>/is', "*$2*", $html );
+        $html = preg_replace_callback(
+            '/<code[^>]*>(.*?)<\/code>/is',
+            function ( $matches ) {
+                return '`' . trim( $matches[1] ) . '`';
+            },
+            $html
+        );
+        $html = preg_replace_callback(
+            '/<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is',
+            function ( $matches ) {
+                return '[' . trim( $matches[2] ) . '](' . $matches[1] . ')';
+            },
+            $html
+        );
+
+        return $html;
     }
 
     public function markdown_to_html( $markdown, $media_map = array() ) {
@@ -575,49 +1044,51 @@ class PWPM_Markdown {
 
     private function apply_inline_markdown( $text, $media_map = array() ) {
         $text = preg_replace_callback(
-            '/(<[^>]+>)|(!\[([^\]]*)\]\(\s*("?)([^" \t\)]+)\4(?:\s+"([^"]*)")?\s*\))|(\[([^\]]+)\]\(([^)]+)\))|(`([^`]+)`)|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)/',
+            '/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/',
             function ( $matches ) use ( $media_map ) {
-                if ( ! empty( $matches[1] ) ) {
-                    return $matches[1];
+                $alt     = esc_attr( $matches[1] );
+                $raw_src = trim( $matches[2], "\"'" );
+                $src     = $this->resolve_media_src( $raw_src, $media_map );
+                $title   = isset( $matches[3] ) ? trim( $matches[3] ) : '';
+
+                $img = '<img src="' . esc_url( $src ) . '" alt="' . $alt . '" style="max-width: 100%; height: auto;"';
+                if ( '' !== $title ) {
+                    $img .= ' title="' . esc_attr( $title ) . '"';
+                }
+                $img .= ' />';
+
+                if ( '' !== $title ) {
+                    return '<figure class="pwpm-image">' . $img . '<figcaption class="pwpm-caption">' . esc_html( $title ) . '</figcaption></figure>';
                 }
 
-                if ( ! empty( $matches[2] ) ) {
-                    $alt     = esc_attr( $matches[3] );
-                    $raw_src = isset( $matches[5] ) ? $matches[5] : '';
-                    $raw_src = trim( $raw_src, "\"'" );
-                    $src     = $this->resolve_media_src( $raw_src, $media_map );
-                    $title   = isset( $matches[6] ) ? trim( $matches[6] ) : '';
+                return $img;
+            },
+            $text
+        );
 
-                    $img = '<img src="' . esc_url( $src ) . '" alt="' . $alt . '" style="width: -webkit-fill-available; max-width: 100%; height: auto;"';
-                    if ( '' !== $title ) {
-                        $img .= ' title="' . esc_attr( $title ) . '"';
-                    }
-                    $img .= ' />';
-
-                    if ( '' !== $title ) {
-                        return '<figure class="pwpm-image">' . $img . '<figcaption class="pwpm-caption">' . esc_html( $title ) . '</figcaption></figure>';
-                    }
-
-                    return $img;
+        $text = preg_replace_callback(
+            '/<[^>]+>|\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*/',
+            function ( $matches ) use ( $media_map ) {
+                if ( ! empty( $matches[0] ) && '<' === $matches[0][0] ) {
+                    return $matches[0];
                 }
 
-                if ( ! empty( $matches[7] ) ) {
-                    $label = $this->format_link_label( $matches[8] );
-                    $href  = esc_url( $matches[9] );
-
+                if ( ! empty( $matches[1] ) && ! empty( $matches[2] ) ) {
+                    $label = $this->format_link_label( $matches[1] );
+                    $href  = esc_url( $matches[2] );
                     return '<a href="' . $href . '">' . $label . '</a>';
                 }
 
-                if ( ! empty( $matches[10] ) ) {
-                    return '<code>' . esc_html( $matches[11] ) . '</code>';
+                if ( ! empty( $matches[3] ) ) {
+                    return '<code>' . esc_html( $matches[3] ) . '</code>';
                 }
 
-                if ( ! empty( $matches[12] ) ) {
-                    return '<strong>' . $matches[13] . '</strong>';
+                if ( ! empty( $matches[4] ) ) {
+                    return '<strong>' . $matches[4] . '</strong>';
                 }
 
-                if ( ! empty( $matches[14] ) ) {
-                    return '<em>' . $matches[15] . '</em>';
+                if ( ! empty( $matches[5] ) ) {
+                    return '<em>' . $matches[5] . '</em>';
                 }
 
                 return $matches[0];
