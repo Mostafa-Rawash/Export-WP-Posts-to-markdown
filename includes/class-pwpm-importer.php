@@ -11,6 +11,8 @@ class PWPM_Importer {
     private $log;
     private $fail;
     private $sync;
+    private $translation_map = array();
+    private $post_language_map = array();
 
     public function __construct( $markdown, $media, $logger, $failer, $sync = null ) {
         $this->markdown = $markdown;
@@ -48,6 +50,8 @@ class PWPM_Importer {
             $media_map = $this->media->prepare_zip_media_map( $zip );
             $folders   = array();
             $indexed   = array();
+            $this->translation_map = array();
+            $this->post_language_map = array();
 
             for ( $i = 0; $i < $zip->numFiles; $i++ ) {
                 $entry_name = $zip->getNameIndex( $i );
@@ -74,10 +78,11 @@ class PWPM_Importer {
 
                 $result = $this->import_markdown_post( $markdown, $entry_name, $media_map );
                 $stats['processed']++;
-                $stats[ $result ]++;
+                $stats[ $result['status'] ]++;
             }
 
             $this->maybe_create_folder_posts( $folders, $indexed );
+            $this->link_polylang_translations();
 
             $zip->close();
         } elseif ( 'md' === $extension ) {
@@ -152,7 +157,7 @@ class PWPM_Importer {
 
         if ( ! empty( $meta['skip_file'] ) && 'yes' === strtolower( (string) $meta['skip_file'] ) ) {
             $this->log_debug( 'Skipping import for ' . $filename . ' due to skip_file flag.' );
-            return 'skipped';
+            return array( 'status' => 'skipped', 'post_id' => 0 );
         }
 
         $original_id = $this->extract_post_id_from_meta( $meta );
@@ -201,6 +206,7 @@ class PWPM_Importer {
         }
 
         $result_status = 'skipped';
+        $final_post_id = 0;
 
         if ( $post_id && get_post( $post_id ) ) {
             $postarr['ID'] = $post_id;
@@ -209,6 +215,7 @@ class PWPM_Importer {
             if ( ! is_wp_error( $updated_id ) ) {
                 $this->log_debug( 'Updated post ID ' . $post_id . ' from ' . $filename . '.' );
                 $result_status = 'updated';
+                $final_post_id = $post_id;
                 $this->assign_terms_from_meta( $post_id, $meta );
                 $this->apply_custom_fields( $post_id, $meta );
                 $this->apply_folder_path_meta( $post_id, $meta );
@@ -216,6 +223,7 @@ class PWPM_Importer {
                 $this->media->set_featured_image( $post_id, isset( $meta['featured_image'] ) ? $meta['featured_image'] : '', $media_map );
                 $this->maybe_apply_page_template( $post_id, $meta );
                 $this->maybe_apply_sticky( $post_id, $meta );
+                $this->apply_polylang_language( $post_id, $meta );
             } else {
                 $this->log_debug( 'Failed to update post ID ' . $post_id . ': ' . $updated_id->get_error_message() );
             }
@@ -225,6 +233,7 @@ class PWPM_Importer {
             if ( ! is_wp_error( $inserted_id ) ) {
                 $this->log_debug( 'Created new post ID ' . $inserted_id . ' from ' . $filename . '.' );
                 $result_status = 'created';
+                $final_post_id = $inserted_id;
                 if ( $original_id && ! get_post_meta( $inserted_id, '_postsmd_original_id', true ) ) {
                     $this->log_debug( 'Original ID ' . $original_id . ' stored in post meta because matching post was not found.' );
                     update_post_meta( $inserted_id, '_postsmd_original_id', $original_id );
@@ -236,12 +245,20 @@ class PWPM_Importer {
                 $this->media->set_featured_image( $inserted_id, isset( $meta['featured_image'] ) ? $meta['featured_image'] : '', $media_map );
                 $this->maybe_apply_page_template( $inserted_id, $meta );
                 $this->maybe_apply_sticky( $inserted_id, $meta );
+                $this->apply_polylang_language( $inserted_id, $meta );
             } else {
                 $this->log_debug( 'Failed to create post from ' . $filename . ': ' . $inserted_id->get_error_message() );
             }
         }
 
-        return $result_status;
+        if ( $final_post_id && ! empty( $meta['translations'] ) && is_array( $meta['translations'] ) ) {
+            $this->translation_map[ $final_post_id ] = $meta['translations'];
+            if ( ! empty( $meta['lang'] ) ) {
+                $this->post_language_map[ $final_post_id ] = sanitize_text_field( $meta['lang'] );
+            }
+        }
+
+        return array( 'status' => $result_status, 'post_id' => $final_post_id );
     }
 
     private function is_html_content( $content ) {
@@ -773,6 +790,84 @@ class PWPM_Importer {
             $validated['id'] = absint( $meta['id'] );
         }
 
+        if ( ! empty( $meta['lang'] ) ) {
+            $validated['lang'] = sanitize_text_field( $meta['lang'] );
+        }
+
+        if ( isset( $meta['translations'] ) && is_array( $meta['translations'] ) ) {
+            $validated['translations'] = $meta['translations'];
+        }
+
         return $validated;
+    }
+
+    private function apply_polylang_language( $post_id, $meta ) {
+        if ( ! function_exists( 'pll_set_post_language' ) ) {
+            return;
+        }
+
+        if ( empty( $meta['lang'] ) ) {
+            return;
+        }
+
+        $lang = sanitize_text_field( $meta['lang'] );
+        pll_set_post_language( $post_id, $lang );
+        $this->log_debug( 'Set Polylang language for post ID ' . $post_id . ' to ' . $lang . '.' );
+    }
+
+    private function link_polylang_translations() {
+        if ( ! function_exists( 'pll_save_post_translations' ) ) {
+            return;
+        }
+
+        if ( empty( $this->translation_map ) ) {
+            return;
+        }
+
+        $id_mapping = $this->build_translation_id_mapping();
+
+        foreach ( $this->translation_map as $post_id => $translations ) {
+            $current_lang = isset( $this->post_language_map[ $post_id ] ) ? $this->post_language_map[ $post_id ] : '';
+            $translations_arr = array();
+
+            if ( $current_lang ) {
+                $translations_arr[ $current_lang ] = $post_id;
+            }
+
+            foreach ( $translations as $t_lang => $t_original_id ) {
+                $t_original_id = (int) $t_original_id;
+                if ( isset( $id_mapping[ $t_original_id ] ) ) {
+                    $translations_arr[ $t_lang ] = $id_mapping[ $t_original_id ];
+                } elseif ( get_post( $t_original_id ) ) {
+                    $translations_arr[ $t_lang ] = $t_original_id;
+                }
+            }
+
+            if ( count( $translations_arr ) > 1 ) {
+                pll_save_post_translations( $translations_arr );
+                $this->log_debug( 'Linked translations for post ID ' . $post_id . ': ' . wp_json_encode( $translations_arr ) );
+            }
+        }
+    }
+
+    private function build_translation_id_mapping() {
+        $mapping = array();
+
+        $posts_with_original = get_posts( array(
+            'post_type'      => 'post',
+            'posts_per_page' => -1,
+            'post_status'    => 'any',
+            'meta_key'       => '_postsmd_original_id',
+            'fields'         => array( 'ID' ),
+        ) );
+
+        foreach ( $posts_with_original as $post ) {
+            $original_id = get_post_meta( $post->ID, '_postsmd_original_id', true );
+            if ( $original_id ) {
+                $mapping[ (int) $original_id ] = $post->ID;
+            }
+        }
+
+        return $mapping;
     }
 }

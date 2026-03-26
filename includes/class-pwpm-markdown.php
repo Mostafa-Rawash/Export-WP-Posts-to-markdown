@@ -1067,7 +1067,7 @@ class PWPM_Markdown {
         );
 
         $text = preg_replace_callback(
-            '/<[^>]+>|\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*/',
+            '/<[^>]+>|\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*((?:(?!\*\*).)+)\*\*|\*([^*]+)\*/',
             function ( $matches ) use ( $media_map ) {
                 if ( ! empty( $matches[0] ) && '<' === $matches[0][0] ) {
                     return $matches[0];
@@ -1084,11 +1084,13 @@ class PWPM_Markdown {
                 }
 
                 if ( ! empty( $matches[4] ) ) {
-                    return '<strong>' . $matches[4] . '</strong>';
+                    $content = $this->apply_inline_markdown( $matches[4], $media_map );
+                    return '<strong>' . $content . '</strong>';
                 }
 
                 if ( ! empty( $matches[5] ) ) {
-                    return '<em>' . $matches[5] . '</em>';
+                    $content = $this->apply_inline_markdown( $matches[5], $media_map );
+                    return '<em>' . $content . '</em>';
                 }
 
                 return $matches[0];

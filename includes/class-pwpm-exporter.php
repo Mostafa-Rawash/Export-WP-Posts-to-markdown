@@ -172,6 +172,20 @@ class PWPM_Exporter {
             $seo_keys = get_post_meta( $post->ID, 'rank_math_focus_keywords', true );
         }
 
+        $lang = '';
+        $translations = array();
+        if ( function_exists( 'pll_get_post_language' ) ) {
+            $lang = pll_get_post_language( $post->ID, 'slug' );
+        }
+        if ( function_exists( 'pll_get_post_translations' ) ) {
+            $post_translations = pll_get_post_translations( $post->ID );
+            foreach ( $post_translations as $t_lang => $t_id ) {
+                if ( $t_id !== $post->ID ) {
+                    $translations[ $t_lang ] = (int) $t_id;
+                }
+            }
+        }
+
         $categories = get_the_category( $post->ID );
         $tags       = get_the_tags( $post->ID );
 
@@ -230,6 +244,17 @@ class PWPM_Exporter {
 
         if ( $author ) {
             $md_lines[] = 'author: "' . $this->markdown->escape_yaml( $author ) . '"';
+        }
+
+        if ( $lang ) {
+            $md_lines[] = 'lang: "' . $this->markdown->escape_yaml( $lang ) . '"';
+        }
+
+        if ( ! empty( $translations ) ) {
+            $md_lines[] = 'translations:';
+            foreach ( $translations as $t_lang => $t_id ) {
+                $md_lines[] = '  ' . $t_lang . ': ' . $t_id;
+            }
         }
 
         if ( ! empty( $category_names ) ) {
