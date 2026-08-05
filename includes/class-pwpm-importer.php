@@ -93,9 +93,9 @@ class PWPM_Importer {
                 $this->fail( esc_html__( 'Could not read the uploaded Markdown file.', 'posts-markdown' ) );
             }
 
-            $result              = $this->import_markdown_post( $markdown, $name, array() );
-            $stats['processed']  = 1;
-            $stats[ $result ]   += 1;
+            $result             = $this->import_markdown_post( $markdown, $name, array() );
+            $stats['processed'] = 1;
+            $stats[ $result['status'] ] += 1;
         } else {
             $this->log_debug( 'Unsupported file extension: ' . $extension );
             $this->fail( esc_html__( 'Only ZIP archives or .md files are supported for import.', 'posts-markdown' ) );

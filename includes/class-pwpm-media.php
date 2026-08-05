@@ -97,7 +97,7 @@ class PWPM_Media {
     }
 
     public function set_featured_image( $post_id, $source, $media_map = array() ) {
-        $source = trim( (string) $source );
+        $source = $this->unwrap_wiki_link( $source );
 
         if ( '' === $source ) {
             return;
@@ -111,8 +111,8 @@ class PWPM_Media {
         $normalized = $this->normalize_media_path( $source );
 
         if ( '' === $normalized ) {
-            $this->log_debug( 'featured_image not under _images/: ' . $source );
-            return;
+            // A bare filename is treated as living in _images/, same as inline images.
+            $normalized = '_images/' . basename( str_replace( '\\', '/', $source ) );
         }
 
         $attachment = $this->find_existing_attachment_by_source( $normalized );
@@ -131,6 +131,20 @@ class PWPM_Media {
             }
             $this->log_debug( 'Could not resolve featured_image for ' . $source . '; normalized=' . $normalized . $map_hint );
         }
+    }
+
+    public function unwrap_wiki_link( $source ) {
+        $source = trim( (string) $source );
+
+        if ( preg_match( '/^!?\[\[(.+)\]\]$/', $source, $matches ) ) {
+            $source = trim( $matches[1] );
+        }
+
+        if ( false !== strpos( $source, '|' ) ) {
+            list( $source ) = array_map( 'trim', explode( '|', $source, 2 ) );
+        }
+
+        return $source;
     }
 
     public function normalize_media_path( $path ) {

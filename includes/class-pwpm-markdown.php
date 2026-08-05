@@ -56,6 +56,9 @@ class PWPM_Markdown {
     }
 
     public function markdown_to_wp_blocks( $content, $media_map = array() ) {
+        $content = str_replace( "\r\n", "\n", (string) $content );
+        $content = $this->convert_obsidian_images( $content );
+
         $lines = explode( "\n", $content );
         $result = '';
         $in_html_block = false;
@@ -534,23 +537,18 @@ class PWPM_Markdown {
             $html
         );
 
-        $html = preg_replace( '/<(strong|b)>(.*?)<\/\1>/is', "**$2**", $html );
-        $html = preg_replace( '/<(em|i)>(.*?)<\/\1>/is', "*$2*", $html );
-
         $html = preg_replace_callback(
             '/<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is',
             function ( $matches ) {
                 $label = trim( $matches[2] );
-                $link  = '[' . $label . '](' . esc_url_raw( $matches[1] ) . ')';
 
-                if ( 0 === strpos( $label, '**' ) && substr( $label, -2 ) === '**' ) {
-                    return $link;
-                }
-
-                return '**' . $link . '**';
+                return '[' . $label . '](' . esc_url_raw( $matches[1] ) . ')';
             },
             $html
         );
+
+        $html = preg_replace( '/<(strong|b)>(.*?)<\/\1>/is', "**$2**", $html );
+        $html = preg_replace( '/<(em|i)>(.*?)<\/\1>/is', "*$2*", $html );
 
         $html = preg_replace_callback(
             '/<img[^>]*(?:src=["\']([^"\']+)["\']|alt=["\']([^"\']*)["\']|title=["\']([^"\']*)["\'])+[^>]*>/is',
@@ -770,16 +768,29 @@ class PWPM_Markdown {
         return preg_replace_callback(
             '/!\[\[([^\]]+)\]\]/',
             function ( $matches ) {
-                $filename = trim( $matches[1] );
-                if ( '' === $filename ) {
+                $target = trim( $matches[1] );
+                $alt    = '';
+
+                if ( false !== strpos( $target, '|' ) ) {
+                    list( $target, $alt ) = array_map( 'trim', explode( '|', $target, 2 ) );
+
+                    // Obsidian also uses the pipe for display size (|300 or |300x200), not alt text.
+                    if ( preg_match( '/^\d+(x\d+)?$/', $alt ) ) {
+                        $alt = '';
+                    }
+                }
+
+                $alt = str_replace( array( '[', ']' ), '', $alt );
+
+                if ( '' === $target ) {
                     return $matches[0];
                 }
 
-                if ( 0 === strpos( $filename, '_images/' ) || 0 === strpos( $filename, '/_images/' ) ) {
-                    return '![](' . ltrim( $filename, '/' ) . ')';
+                if ( 0 === strpos( $target, '_images/' ) || 0 === strpos( $target, '/_images/' ) ) {
+                    return '![' . $alt . '](' . ltrim( $target, '/' ) . ')';
                 }
 
-                return '![](_images/' . $filename . ')';
+                return '![' . $alt . '](_images/' . $target . ')';
             },
             $markdown
         );
@@ -1043,6 +1054,9 @@ class PWPM_Markdown {
     }
 
     private function apply_inline_markdown( $text, $media_map = array() ) {
+        $text = preg_replace( '/\*{4,}(?=\S)/', '**', $text );
+        $text = preg_replace( '/(?<=\S)\*{4,}/', '**', $text );
+
         $text = preg_replace_callback(
             '/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/',
             function ( $matches ) use ( $media_map ) {

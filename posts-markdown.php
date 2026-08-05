@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Posts Markdown
  * Description: Export WordPress posts to Markdown files and import them back with YAML front matter support.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: You
  */
 

@@ -220,7 +220,14 @@ includes/
 
 ## Changelog
 
-### Latest
+### 1.1.0
+- Added Polylang support: `lang` and `translations` exported, languages and translation links restored on import
+- Obsidian `![[image.png]]` syntax now works on import, including `![[image.png|Alt text]]` and `|300` size suffixes
+- `featured_image` now accepts a bare filename or wiki syntax, not just an explicit `_images/` path
+- Fixed links exporting with `****` instead of `**` — links are no longer force-bolded on export
+- Fixed fatal error when importing a single `.md` file
+
+### 1.0.0
 - Fixed HTML block preservation during export
 - Fixed code block export with language support
 - Fixed ordered list import (`1.`, `2.`, `3.` format)
